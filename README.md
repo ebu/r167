@@ -12,7 +12,6 @@ Two versions are provided:
 
 The idea for this tool was inspired by work related to:
 
-- EBU Recommendation R 167 — Reference Monitors: Predefined Modes for HLG
-   https://tech.ebu.ch/publications/r167
+- [EBU Recommendation R 167 — Reference Monitors: Predefined Modes for HLG](https://tech.ebu.ch/publications/r167)
 
 Credits: Thomas Berglund (NRK) for the concept and implementation.
