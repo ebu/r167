@@ -7,8 +7,8 @@ This HLG Display Adaptation Calculator implements the Hybrid Log-Gamma (HLG) sys
 The intention is to help users understand more about how the Hybrid Log-Gamma (HLG) system works.
 
 Two versions are provided:
-- HTML/CSS/JavaScript version to use directly in a browser.
-- Python version for CLI based interaction.
+- Interactive HTML/CSS/JavaScript version to use directly in a browser
+- Python version for CLI based interaction
 
 The idea for this tool was inspired by work related to:
 
