@@ -18,11 +18,11 @@ limitations under the License.
 HLG Display Adaptation Calculator
 
 Version: 1.3
-Last modified: 2025-03-31
+Last modified: 2025-04-28
 Author: Thomas Berglund, with assistance from Claude 3.7 Sonnet, by Anthropic.
 
 This HLG Display Adaptation Calculator implements the Hybrid Log-Gamma (HLG) system as specified in
-ITU-R BT.2100, with calculations for System Gamma and HDR reference white following ITU-R BT.2100 Note 5f,
+ITU-R BT.2100, with calculations for System Gamma and HDR Reference White following ITU-R BT.2100 Note 5f,
 ITU-R BT.2390 Section 6.2 and ITU-R BT.2408 Section 2.1 respectively.
 
 The intention is to help users understand more about how the Hybrid Log-Gamma (HLG) system works.
