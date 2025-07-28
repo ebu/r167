@@ -20,8 +20,8 @@ limitations under the License.
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Interactive calculator for HLG display adaptation">
     <meta name="author" content="Thomas Berglund, with assistance from Claude 3.7 Sonnet, by Anthropic">
-    <meta name="version" content="1.3">
-    <meta name="last-modified" content="2025-04-28">
+    <meta name="version" content="1.4">
+    <meta name="last-modified" content="2025-07-28">
     <!-- KaTeX CSS and JS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -113,6 +113,7 @@ limitations under the License.
             font-weight: bold;
             color: var(--color-text-muted);
             font-size: var(--font-size-md);
+            overflow: hidden;
         }
 
         ul {
@@ -213,6 +214,34 @@ limitations under the License.
         input[type="range"]:hover::-webkit-slider-thumb,
         input[type="range"]:hover::-moz-range-thumb {
             transform: scale(1.05);
+        }
+
+        input[type="number"] {
+            width: 6em;
+            padding: var(--space-xs) var(--space-sm);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-sm);
+            background: var(--color-bg);
+            color: var(--color-text);
+            text-align: right;
+            margin-left: var(--space-sm);
+            float: right;
+
+            /* Tabular figures for consistent spacing */
+            font-feature-settings: "tnum";
+
+            transition: border-color var(--transition), 
+                        box-shadow var(--transition);
+        }
+
+        input[type="number"]:focus {
+            outline: none;
+            border-color: var(--color-primary);
+            box-shadow: 0 0 0 2px var(--color-primary-hover);
+        }
+
+        input[type="number"]:hover {
+            border-color: var(--color-primary);
         }
 
         /* BUTTONS
@@ -414,6 +443,11 @@ limitations under the License.
                 width: 30px;
                 height: 30px;
             }
+
+            input[type="number"] {
+                width: 5em;
+                padding: var(--space-xs);
+            }
         }
     </style>
 </head>
@@ -424,12 +458,14 @@ limitations under the License.
             <h1>HLG Display Adaptation Calculator</h1>
             <div class="slider-container">
                 <label for="peakLuminance">Display Peak Luminance (cd/m²)</label>
-                <input type="range" id="peakLuminance" min="100" max="10000" step="100" value="1000">
+                <input type="number" inputmode="numeric" id="peakLuminanceInput" class="value-input" min="100" max="10000" step="1" value="1000">
+                <input type="range" id="peakLuminance" min="100" max="10000" step="1" value="1000">
                 <div class="preset-buttons" id="peakLuminanceButtons"></div>
             </div>
 
             <div class="slider-container">
                 <label for="surroundLuminance">Surround Luminance (cd/m²)</label>
+                <input type="number" id="surroundLuminanceInput" class="value-input" min="0.05" max="500" step="0.01" value="5">
                 <input type="range" id="surroundLuminance" min="0.05" max="500" step="0.01" value="5">
                 <div class="preset-buttons" id="surroundLuminanceButtons"></div>
             </div>
@@ -444,7 +480,8 @@ limitations under the License.
 
             <div id="blackLevelSliderContainer" class="slider-container" style="display: none;">
                 <label for="blackLevel">Black Level Luminance (cd/m²)</label>
-                <input type="range" id="blackLevel" min="0.001" max="0.1" step="0.001" value="0.005">
+                <input type="number" id="blackLevelInput" class="value-input" min="0.0001" max="1.0" step="0.0001" value="0.0050">
+                <input type="range" id="blackLevel" min="0.0001" max="1.0" step="0.0001" value="0.005">
                 <div class="preset-buttons" id="blackLevelButtons"></div>
             </div>
 
@@ -530,7 +567,7 @@ limitations under the License.
             </p>
 
             <p>
-                HLG is a <strong><em>relative scene-light</em></strong> to <strong><em>log</em></strong> transfer function. Unlike PQ (Perceptual Quantizer), which encodes absolute display luminance values, HLG maintains relative scene-luminance relationships while allowing adaptation to different display peak luminances.
+                HLG is a <strong><em>relative scene-light</em></strong> to <strong><em>log</em></strong> transfer function. Unlike PQ (Perceptual Quantizer), which encodes absolute display luminance values, HLG maintains relative scene-luminance relationships while allowing adaptation to different display peak luminance values.
             </p>
 
             <p>
@@ -548,7 +585,7 @@ limitations under the License.
             </p>
 
             <p>
-                That adaptive behaviour is precisely what this <strong>HLG Display Adaptation Calculator</strong> aims demonstrate - as peak display luminance or surround luminance changes, the System Gamma and resulting HDR Reference White luminance value automatically adjust to maintain a consistent perceptual appearance.
+                That adaptive behaviour is precisely what this <strong>HLG Display Adaptation Calculator</strong> aims to demonstrate - as peak display luminance or surround luminance changes, the System Gamma and resulting HDR Reference White luminance value automatically adjust to maintain a consistent perceptual appearance.
             </p>
 
             <p>
@@ -582,7 +619,7 @@ limitations under the License.
                 <footer>- Masayuki Sugawara, NHK</footer>
             </blockquote>
             <p>
-                High Dynamic Range (HDR) content created for broadcast and home entertainment should be displayed in a way that remains <strong>visually consistent</strong> across different peak luminances and ambient conditions. This is achieved through the <strong>Opto-Optical Transfer Function (OOTF)</strong>, which maps relative scene-referred light to displayed light:
+                High Dynamic Range (HDR) content created for broadcast and home entertainment should be displayed in a way that remains <strong>visually consistent</strong> across different peak luminance values and ambient conditions. This is achieved through the <strong>Opto-Optical Transfer Function (OOTF)</strong>, which maps relative scene-referred light to displayed light:
             </p>
 
             <p><code>displayed_light ∝ scene_light^γ</code></p>
@@ -641,8 +678,37 @@ limitations under the License.
                 <li><span class="formula-container">b = 0.28466892 = 1 - 4a</span></li>
                 <li><span class="formula-container">c = 0.55991073 = 0.5 - a \cdot \ln(4a)</span></li>
             </ul>
-            
-            <h4>Electro-Optical Transfer Function (EOTF) and Display Adaptation</h4>
+
+            <h4>The Opto-Optical Transfer Function (OOTF)</h4>
+            <p>
+                As explained in <a href="https://www.itu.int/pub/R-REP-BT.2390" target="_blank">ITU-R BT.2390-11 Section 6.2</a>, the light output of a television display is not proportional to the light detected by the camera. The overall system non-linearity, or "rendering intent," is defined by the opto-optical transfer function (OOTF). The OOTF maps relative scene linear light to display linear light to compensate for the psychovisual effects of watching an emissive screen in a dark or dim environment.
+            </p>
+
+            <p>
+                For HLG the OOTF is applied to the luminance component only, rather than independently to each color component as done in SDR television. This approach prevents color saturation and hue distortions that would otherwise occur when adapting content to displays of different peak luminance. According to <a href="https://www.itu.int/rec/R-REC-BT.2100" target="_blank">ITU-R BT.2100-3 Table 5</a>, the HLG reference OOTF is therefore given by:
+            </p>
+
+            <div class="formula-container">F_D = \text{OOTF}[E] = \alpha Y_S^{\gamma-1} E</div>
+
+            <p>Where the scene luminance is calculated as:</p>
+            <div class="formula-container">Y_S = 0.2627R_S + 0.6780G_S + 0.0593B_S</div>
+
+            <p>And the displayed RGB components are:</p>
+            <ul>
+                <li><span class="formula-container">R_D = \alpha Y_S^{\gamma-1} R_S</span></li>
+                <li><span class="formula-container">G_D = \alpha Y_S^{\gamma-1} G_S</span></li>
+                <li><span class="formula-container">B_D = \alpha Y_S^{\gamma-1} B_S</span></li>
+            </ul>
+
+            <p>Where:</p>
+            <ul>
+                <li><span class="formula-container">F_D</span> is luminance of a displayed linear component {R<sub>D</sub>, G<sub>D</sub>, or B<sub>D</sub>}, in cd/m²</li>
+                <li><span class="formula-container">E</span> is signal for each color component {R<sub>S</sub>, G<sub>S</sub>, B<sub>S</sub>} proportional to scene linear light and scaled by camera exposure, normalized to           the range [0:1]</li>
+                <li><span class="formula-container">\alpha</span> is user adjustment for the luminance of the display (nominal peak luminance in cd/m²)</li>
+                <li><span class="formula-container">\gamma</span> is an exponent which varies depending on L<sub>W</sub> as described below, and which is equal to 1.2 at the nominal display peak luminance of 1000 cd/m²</li>
+            </ul>
+
+            <h4>Electro-Optical Transfer Function (EOTF)</h4>
             <p>
                 The complete HLG Reference EOTF process consists of three conceptual steps:
             </p>
@@ -662,7 +728,7 @@ limitations under the License.
             </p>
 
             <p>
-                The peak display luminance value of 1000 cd/m² in the formula for the HLG System Gamma is used as a reference condition. It is not a signal constraint. When the BBC and NHK were developing HLG, they conducted extensive perceptual experiments to determine the optimal System Gamma for different display luminance levels. These experiments revealed that a System Gamma of 1.2 produced optimal results on a 1000 cd/m² display in a 5 cd/m² surround viewing environment. This specific configuration became HLG's reference condition, serving as the baseline from which all other viewing scenarios are measured.
+                The peak display luminance value of 1000 cd/m² in the formula for the HLG System Gamma is used as a reference condition. It is not a signal constraint. When the BBC and NHK were developing HLG, they conducted extensive perceptual experiments to determine the optimal System Gamma for different display luminance levels. These experiments revealed that a System Gamma of 1.2 produced optimal results on a 1000 cd/m² display in a 5 cd/m² surround viewing environment. This specific configuration became HLG's reference condition, serving as the baseline from which all other viewing conditions are measured and calculated.
             </p>
 
             <h4>1. Baseline HLG System Gamma calculation</h4>
@@ -671,13 +737,19 @@ limitations under the License.
                 ITU-R BT.2100-3 Note 5f defines two formulas for adjusting the System Gamma based on the display's peak luminance (<span class="formula-container">L_w</span>), with different formulas optimized for different luminance ranges:
             </p>
             
-            <p><strong>For displays within the usual production monitoring range (400 cd/m² ≤ <span class="formula-container">L_w</span> ≤ 2000 cd/m²):</strong></p>
+            <p>
+                <strong>For displays within the usual production monitoring range (400 cd/m² ≤ <span class="formula-container">L_w</span> ≤ 2000 cd/m²):</strong>
+            </p>
             <div class="formula-container">\gamma = 1.2 + 0.42 \log_{10} \left( \frac{L_w}{1000} \right)</div>
             
-            <p><strong>For displays outside the usual production range (<span class="formula-container">L_w</span> < 400 cd/m² or <span class="formula-container">L_w</span> > 2000 cd/m²):</strong></p>
+            <p>
+                <strong>For displays outside the usual production range (<span class="formula-container">L_w</span> < 400 cd/m² or <span class="formula-container">L_w</span> > 2000 cd/m²):</strong>
+            </p>
             <div class="formula-container">\gamma = 1.2 \times \kappa^{\log_2 \left( \frac{L_w}{1000} \right)} \quad \text{where } \kappa = 1.111</div>
             
-            <p>Both formulas are centered around the reference point of 1000 cd/m², where they produce identical results with a System Gamma of 1.2. The second formula is based on a logarithmic power law and provides better performance at extreme luminance values.</p>
+            <p>
+                Both formulas are centered around the reference point of 1000 cd/m², where they produce identical results with a System Gamma of 1.2. The second formula is based on a logarithmic power law and provides better performance at extreme luminance values.
+            </p>
             
             <h4>2. Surround luminance adaptation</h4>
             
@@ -687,12 +759,18 @@ limitations under the License.
             
             <div class="formula-container">\gamma = \gamma_{\text{baseline}} \times \mu^{\log_2 \left( \frac{L_s}{L_{s_{\text{ref}}}} \right)} \quad \text{where } \mu = 0.98, L_{s_{\text{ref}}} = 5 \text{ cd/m}^2</div>
             
-            <p>Combining this with either of the baseline formulas gives the complete formula for System Gamma:</p>
+            <p>
+                Combining this with either of the baseline formulas gives the complete formula for System Gamma:
+            </p>
             
-            <p>For displays within the usual production monitoring range (400 cd/m² ≤ <span class="formula-container">L_w</span> ≤ 2000 cd/m²):</p>
+            <p>
+                For displays within the usual production monitoring range (400 cd/m² ≤ <span class="formula-container">L_w</span> ≤ 2000 cd/m²):
+            </p>
             <div class="formula-container">\gamma = \left( 1.2 + 0.42 \log_{10} \left( \frac{L_w}{1000} \right) \right) \times \mu^{\log_2 \left( \frac{L_s}{L_{s_{\text{ref}}}} \right)}</div>
             
-            <p>For displays outside the usual production range (<span class="formula-container">L_w</span> < 400 cd/m² or <span class="formula-container">L_w</span> > 2000 cd/m²):</p>
+            <p>
+                For displays outside the usual production range (<span class="formula-container">L_w</span> < 400 cd/m² or <span class="formula-container">L_w</span> > 2000 cd/m²):
+            </p>
             <div class="formula-container">\gamma = 1.2 \times \kappa^{\log_2 \left( \frac{L_w}{L_{\text{ref}}} \right)} \times \mu^{\log_2 \left( \frac{L_s}{L_{s_{\text{ref}}}} \right)}</div>
 
             <h4>Formula components</h4>
@@ -915,7 +993,7 @@ limitations under the License.
             </p>
 
             <p>
-                In order to display the Extended Range above the specified peak reference level for 100% signal, the display must have sufficient headroom above its stated peak luminance to allow for 109% to be displayed. Many professional monitors include this capability, but consumer displays may clip signals above 100%.
+                In order to display the Extended Range above the specified peak reference level for 100% signal, the display must have sufficient headroom above its stated peak luminance to allow for 109% to be displayed.
             </p>
 
             <p>
@@ -1001,7 +1079,7 @@ limitations under the License.
         </div>
     </div>
 
-    <script>
+<script>
         /**
          *  HLG Display Adaptation Calculator
          * 
@@ -1246,11 +1324,17 @@ limitations under the License.
             constructor(calculator) {
                 this.calculator = calculator;
 
-                // Elements
+                // Slider elements
                 this.peakLuminanceSlider = document.getElementById("peakLuminance");
                 this.surroundLuminanceSlider = document.getElementById("surroundLuminance");
                 this.blackLevelSlider = document.getElementById("blackLevel");
 
+                // Input field elements
+                this.peakLuminanceInput = document.getElementById("peakLuminanceInput");
+                this.surroundLuminanceInput = document.getElementById("surroundLuminanceInput");
+                this.blackLevelInput = document.getElementById("blackLevelInput");
+
+                // Display value elements
                 this.peakLuminanceValue = document.getElementById("peakLuminanceValue");
                 this.surroundLuminanceValue = document.getElementById("surroundLuminanceValue");
                 this.blackLevelValue = document.getElementById("blackLevelValue");
@@ -1270,21 +1354,131 @@ limitations under the License.
              * Set up event listeners for UI elements
              */
             setupEventListeners() {
-                // Slider change events
+                // Peak Luminance slider and input events
                 this.peakLuminanceSlider.addEventListener("input", () => {
+                    this.syncInputFromSlider('peak');
                     this.updateDisplay(true);
                     this.emitUpdateEvent();
                 });
 
+                this.peakLuminanceInput.addEventListener("input", () => {
+                    this.syncSliderFromInput('peak');
+                    this.updateDisplay(true);
+                    this.emitUpdateEvent();
+                });
+
+                this.peakLuminanceInput.addEventListener("blur", () => {
+                    this.validateInput('peak');
+                });
+
+                // Surround Luminance slider and input events
                 this.surroundLuminanceSlider.addEventListener("input", () => {
+                    this.syncInputFromSlider('surround');
                     this.updateDisplay(true);
                     this.emitUpdateEvent();
                 });
 
-                this.blackLevelSlider.addEventListener("input", () => {
+                this.surroundLuminanceInput.addEventListener("input", () => {
+                    this.syncSliderFromInput('surround');
                     this.updateDisplay(true);
                     this.emitUpdateEvent();
                 });
+
+                this.surroundLuminanceInput.addEventListener("blur", () => {
+                    this.validateInput('surround');
+                });
+
+                // Black Level slider and input events
+                this.blackLevelSlider.addEventListener("input", () => {
+                    this.syncInputFromSlider('blackLevel');
+                    this.updateDisplay(true);
+                    this.emitUpdateEvent();
+                });
+
+                this.blackLevelInput.addEventListener("input", () => {
+                    this.syncSliderFromInput('blackLevel');
+                    this.updateDisplay(true);
+                    this.emitUpdateEvent();
+                });
+
+                this.blackLevelInput.addEventListener("blur", () => {
+                    this.validateInput('blackLevel');
+                });
+            }
+
+            /**
+             * Sync input field from slider value
+             */
+            syncInputFromSlider(type) {
+                if (type === 'peak') {
+                    this.peakLuminanceInput.value = this.peakLuminanceSlider.value;
+                } else if (type === 'surround') {
+                    this.surroundLuminanceInput.value = this.surroundLuminanceSlider.value;
+                } else if (type === 'blackLevel') {
+                    this.blackLevelInput.value = this.blackLevelSlider.value;
+                }
+            }
+
+            /**
+             * Sync slider from input field value
+             */
+            syncSliderFromInput(type) {
+                if (type === 'peak') {
+                    const value = parseFloat(this.peakLuminanceInput.value);
+                    if (!isNaN(value)) {
+                        this.peakLuminanceSlider.value = Math.max(
+                            this.peakLuminanceSlider.min, 
+                            Math.min(this.peakLuminanceSlider.max, value)
+                        );
+                    }
+                } else if (type === 'surround') {
+                    const value = parseFloat(this.surroundLuminanceInput.value);
+                    if (!isNaN(value)) {
+                        this.surroundLuminanceSlider.value = Math.max(
+                            this.surroundLuminanceSlider.min, 
+                            Math.min(this.surroundLuminanceSlider.max, value)
+                        );
+                    }
+                } else if (type === 'blackLevel') {
+                    const value = parseFloat(this.blackLevelInput.value);
+                    if (!isNaN(value)) {
+                        this.blackLevelSlider.value = Math.max(
+                            this.blackLevelSlider.min, 
+                            Math.min(this.blackLevelSlider.max, value)
+                        );
+                    }
+                }
+            }
+
+            /**
+             * Validate and constrain input values
+             */
+            validateInput(type) {
+                if (type === 'peak') {
+                    const min = parseFloat(this.peakLuminanceSlider.min);
+                    const max = parseFloat(this.peakLuminanceSlider.max);
+                    const value = parseFloat(this.peakLuminanceInput.value);
+                    
+                    if (isNaN(value) || value < min || value > max) {
+                        this.peakLuminanceInput.value = this.peakLuminanceSlider.value;
+                    }
+                } else if (type === 'surround') {
+                    const min = parseFloat(this.surroundLuminanceSlider.min);
+                    const max = parseFloat(this.surroundLuminanceSlider.max);
+                    const value = parseFloat(this.surroundLuminanceInput.value);
+                    
+                    if (isNaN(value) || value < min || value > max) {
+                        this.surroundLuminanceInput.value = this.surroundLuminanceSlider.value;
+                    }
+                } else if (type === 'blackLevel') {
+                    const min = parseFloat(this.blackLevelSlider.min);
+                    const max = parseFloat(this.blackLevelSlider.max);
+                    const value = parseFloat(this.blackLevelInput.value);
+                    
+                    if (isNaN(value) || value < min || value > max) {
+                        this.blackLevelInput.value = this.blackLevelSlider.value;
+                    }
+                }
             }
 
             /**
@@ -1441,7 +1635,7 @@ limitations under the License.
                 this.blackLevelButtons = document.getElementById("blackLevelButtons");
 
                 // Preset values
-                this.BLACK_LEVEL_PRESETS = [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1];
+                this.BLACK_LEVEL_PRESETS = [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0];
             }
 
             /**
@@ -1681,8 +1875,8 @@ limitations under the License.
                 this.uiController = uiController;
 
                 // Preset values
-                this.PEAK_LUMINANCES = [400, 500, 600, 1000, 2000, 3000, 4000, 5000, 10000];
-                this.SURROUND_LUMINANCES = [0.05, 1, 5, 10, 20, 50, 100, 200, 500];
+                this.PEAK_LUMINANCE = [400, 500, 600, 1000, 2000, 3000, 4000, 5000, 10000];
+                this.SURROUND_LUMINANCE = [0.05, 1, 5, 10, 20, 50, 100, 200, 500];
 
                 // Button containers
                 this.peakButtonsContainer = document.getElementById("peakLuminanceButtons");
@@ -1707,26 +1901,26 @@ limitations under the License.
             createPresetButtons() {
                 this.createButtonsForContainer(
                     this.peakButtonsContainer,
-                    this.PEAK_LUMINANCES,
+                    this.PEAK_LUMINANCE,
                     this.peakLuminanceSlider
                 );
 
                 this.createButtonsForContainer(
                     this.surroundButtonsContainer,
-                    this.SURROUND_LUMINANCES,
+                    this.SURROUND_LUMINANCE,
                     this.surroundLuminanceSlider
                 );
 
                 // Highlight the initial active buttons
                 this.updateButtonHighlight(
                     this.peakButtonsContainer,
-                    this.PEAK_LUMINANCES,
+                    this.PEAK_LUMINANCE,
                     parseFloat(this.peakLuminanceSlider.value)
                 );
 
                 this.updateButtonHighlight(
                     this.surroundButtonsContainer,
-                    this.SURROUND_LUMINANCES,
+                    this.SURROUND_LUMINANCE,
                     parseFloat(this.surroundLuminanceSlider.value)
                 );
             }
@@ -1762,7 +1956,7 @@ limitations under the License.
                 this.peakLuminanceSlider.addEventListener("input", () => {
                     this.updateButtonHighlight(
                         this.peakButtonsContainer,
-                        this.PEAK_LUMINANCES,
+                        this.PEAK_LUMINANCE,
                         parseFloat(this.peakLuminanceSlider.value)
                     );
                 });
@@ -1770,7 +1964,7 @@ limitations under the License.
                 this.surroundLuminanceSlider.addEventListener("input", () => {
                     this.updateButtonHighlight(
                         this.surroundButtonsContainer,
-                        this.SURROUND_LUMINANCES,
+                        this.SURROUND_LUMINANCE,
                         parseFloat(this.surroundLuminanceSlider.value)
                     );
                 });
