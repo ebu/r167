@@ -1,0 +1,1062 @@
+<!--
+Copyright 2026 Thomas Berglund (NRK)
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Interactive calculator for HLG display adaptation">
+    <meta name="author" content="Thomas Berglund, with assistance from Claude, by Anthropic">
+    <meta name="version" content="1.6">
+    <meta name="last-modified" content="2026-09-02">
+    <title>HLG Display Adaptation Calculator</title>
+    <!-- KaTeX 0.16.9 (formulas) and D3 7.9.0 (graphs) -->
+    <link rel="stylesheet" href="lib/katex/katex.min.css">
+    <script defer src="lib/katex/katex.min.js"></script>
+    <script defer src="lib/d3/d3.min.js"></script>
+
+    <link rel="stylesheet" href="css/style.css">
+    <script defer src="js/hlg_graphs.js"></script>
+    <script defer src="js/hlg_calculator.js"></script>
+</head>
+
+<body>
+    <div class="calculator">
+        <div class="container">
+            <h1>HLG Display Adaptation Calculator</h1>
+
+            <div class="extended-range-toggle">
+                <div class="toggle-button-group">
+                    <button id="nominalRangeButton" class="active">Nominal Range (0-100%)</button>
+                    <button id="extendedRangeButton">Extended Range (0-109%)</button>
+                </div>
+            </div>
+
+            <!-- Nominal/extended peak toggle (shown only in Extended Range mode) -->
+            <div id="peakNominalOrExtendedToggle" class="peak-nominal-or-extended-toggle">
+                <div class="toggle-switch">
+                    <button id="peakNominalBtn" class="active">Set Nominal Peak (100%)</button>
+                    <button id="peakExtendedBtn">Set Extended Peak (109%)</button>
+                </div>
+            </div>
+
+            <!-- Collapsible explanation for the current peak mode (shown only in Extended Range mode) -->
+            <details id="extendedRangeDetails" class="extended-range-details">
+                <summary><span id="extendedRangeSummaryText">Extended Range does not change system gamma or HDR Reference White</span></summary>
+
+                <!-- Extended Range explanation -->
+                <div id="extendedRangeNoteSection" class="extended-range-note" hidden>
+                    <p>
+                        <strong>Note:</strong> Enabling Extended Range does not change system gamma or HDR Reference
+                        White. System gamma is adjusted according to the nominal peak luminance L<sub>W</sub> (the 100%
+                        signal level) through the formulas in
+                        <a href="https://www.itu.int/rec/R-REC-BT.2100" target="_blank">ITU-R BT.2100-3</a> Note 5f,
+                        and HDR Reference White follows from L<sub>W</sub> and system gamma through the EOTF;
+                        neither input changes when the displayed range changes. Signals from 100% to 109% are
+                        "super-whites": they pass through the same EOTF, and displaying them requires headroom above
+                        the nominal peak.
+                    </p>
+                    <blockquote>
+                        "During production, signal values are expected to exceed the range E′ = [0.0 : 1.0]. This provides
+                        processing headroom and avoids signal degradation during cascaded processing. Such values of E′,
+                        below 0.0 or exceeding 1.0, should not be clipped during production and exchange."
+                        <footer>ITU-R BT.2100-3, Note 5h</footer>
+                    </blockquote>
+                </div>
+
+                <!-- Extended-peak mode explanation -->
+                <div id="extendedPeakNoteSection" class="extended-range-note" hidden>
+                    <p>
+                        <strong>Note:</strong> The slider now sets the display's <strong>Extended Peak
+                        Luminance</strong>. Rather than mapping the 100% nominal signal to the display peak, the
+                        109% Extended Range signal is mapped to it. No direct formula gives the nominal peak luminance L<sub>W</sub> (the 100%
+                        signal level): system gamma depends on L<sub>W</sub>, the EOTF output at 109% depends on
+                        system gamma, and the 109% luminance is the product of L<sub>W</sub> and that EOTF output.
+                        This is why the nominal peak value has to be calculated from the extended peak value
+                        using an iterative solver:
+                    </p>
+                    <p>
+                        <span class="formula-container">\text{find } L_W \text{ such that } L_W \times \text{EOTF}_{\gamma(L_W)}[1.090183] = L_{109\%}</span>
+                    </p>
+                    <p>
+                        The solver uses bisection: the 109% luminance always increases with L<sub>W</sub>, so the
+                        solution is bracketed between a low and a high estimate, and the interval is halved repeatedly,
+                        keeping the half where the 109% luminance still fits within the display peak, until the two
+                        estimates agree.
+                    </p>
+                    <p>
+                        System gamma and HDR Reference White are derived from the calculated, lower nominal
+                        L<sub>W</sub>. Lowering the effective nominal peak is the adjustment described in
+                        <a href="https://www.itu.int/rec/R-REC-BT.2100" target="_blank">ITU-R BT.2100-3</a> Note 5f:
+                    </p>
+                    <blockquote>
+                        "For displays with nominal peak luminance (L<sub>W</sub>) other than 1&#8239;000 cd/m², or where
+                        the effective nominal peak luminance is adjusted through the use of a contrast control, the system
+                        gamma value should be adjusted according to the formula below and may be rounded to three
+                        significant digits:
+                        <span class="formula-container">\gamma = 1.2 + 0.42\,\log_{10}(L_W/1\,000)</span>
+                        For applications outside of the usual production monitoring range of L<sub>W</sub> equal to
+                        400 cd/m² to 2&#8239;000 cd/m², the following extended range formula should be used:"
+                        <span class="formula-container">\gamma = 1.2 \times \kappa^{\log_2(L_W/1\,000)} \text{ where } \kappa = 1.111</span>
+                    </blockquote>
+                </div>
+            </details>
+
+            <div class="slider-container">
+                <label for="peakLuminance"><span id="peakLuminanceTitle">Nominal Peak Luminance (cd/m²)</span><span class="label-note" id="peakLuminanceSignal">100% signal</span></label>
+                <input type="number" inputmode="numeric" id="peakLuminanceInput" class="value-input" min="100" max="10000" step="1" value="1000">
+                <button id="peakLuminanceResetBtn" class="reset-button"
+                        title="Reset to the reference display's nominal peak, 1000 cd/m²"
+                        aria-label="Reset the peak luminance to the reference display's nominal peak of 1000 cd/m²">&#8634;</button>
+                <input type="range" id="peakLuminance" min="100" max="10000" step="1" value="1000">
+                <div class="preset-buttons" id="peakLuminanceButtons"></div>
+            </div>
+
+            <div class="slider-container">
+                <label for="surroundLuminance">Surround Luminance (cd/m²)</label>
+                <input type="number" id="surroundLuminanceInput" class="value-input" min="0.05" max="500" step="0.01" value="5">
+                <button id="surroundLuminanceResetBtn" class="reset-button"
+                        title="Reset to the reference surround, 5 cd/m²"
+                        aria-label="Reset the surround luminance to the reference 5 cd/m²">&#8634;</button>
+                <input type="range" id="surroundLuminance" min="0.05" max="500" step="0.01" value="5">
+                <div class="preset-buttons" id="surroundLuminanceButtons"></div>
+            </div>
+
+            <!-- Black Level Toggle and Slider -->
+            <div class="black-level-toggle">
+                <div class="toggle-switch">
+                    <button id="blackLevelOffBtn" class="active">Black Level Lift Off</button>
+                    <button id="blackLevelOnBtn">Black Level Lift On</button>
+                </div>
+            </div>
+
+            <div id="blackLevelSliderContainer" class="slider-container" hidden>
+                <label for="blackLevel">Black Level Luminance (cd/m²)</label>
+                <input type="number" id="blackLevelInput" class="value-input" min="0.0001" max="1.0" step="0.0001" value="0.0050">
+                <button id="blackLevelResetBtn" class="reset-button"
+                        title="Reset to 0.005 cd/m², the value this slider opens at"
+                        aria-label="Reset the black level to 0.005 cd/m²">&#8634;</button>
+                <input type="range" id="blackLevel" min="0.0001" max="1.0" step="0.0001" value="0.005">
+                <div class="preset-buttons" id="blackLevelButtons"></div>
+            </div>
+
+            <table class="output-table">
+                <tr>
+                    <th>Surround Luminance<span class="role-pill role-input">Input</span></th>
+                    <td class="output-value-slider" id="surroundLuminanceValue">5 cd/m²</td>
+                </tr>
+                <tr id="nominalPeakRow">
+                    <th>Nominal Peak Luminance (100%)<span class="role-pill role-input" id="nominalPeakRole">Input</span></th>
+                    <td class="output-value-slider" id="peakLuminanceValue">1000 cd/m²</td>
+                </tr>
+                <!-- Conditional rows: the extended peak in Extended Range mode,
+                     the black level pair when Black Level Lift is on -->
+                <tr id="extendedPeakRow" hidden>
+                    <th>Extended Peak Luminance (109%)<span class="role-pill role-calculated" id="extendedPeakRole">Calculated</span></th>
+                    <td class="output-value-calculated" id="extendedPeakValue"></td>
+                </tr>
+                <tr id="blackLevelRow" hidden>
+                    <th>Black Level<span class="role-pill role-input">Input</span></th>
+                    <td class="output-value-slider" id="blackLevelValue">0.005 cd/m²</td>
+                </tr>
+                <tr id="blackLiftRow" hidden>
+                    <th>Black Level Lift (β)<span class="role-pill role-calculated">Calculated</span></th>
+                    <td class="output-value-calculated" id="blackLiftValue">0.000</td>
+                </tr>
+                <tr>
+                    <th>System Gamma<span class="role-pill role-calculated">Calculated</span></th>
+                    <td class="output-value-calculated" id="systemGamma">1.20</td>
+                </tr>
+                <tr>
+                    <th>HDR Reference White (75%)<span class="role-pill role-calculated">Calculated</span></th>
+                    <td class="output-value-calculated" id="referenceWhite">203 cd/m²</td>
+                </tr>
+            </table>
+
+            <!-- KaTeX Formula Display: the live derivations for the current
+                 settings, placed between the results table and the graphs so
+                 the page reads inputs -> results -> derivation -> curves -->
+            <div class="live-formulas">
+                <h2 class="live-formula-heading" id="gammaFormulaHeading">System Gamma Formula</h2>
+                <div id="mathGamma" class="formula-container"></div>
+
+                <div id="blackLevelFormulaSection" hidden>
+                    <h2 class="live-formula-heading">Black Level Lift Formula</h2>
+                    <div id="mathBlackLift" class="formula-container"></div>
+                </div>
+
+                <h2 class="live-formula-heading">HDR Reference White Formula</h2>
+                <div id="mathRefWhite" class="formula-container"></div>
+
+                <div id="extendedRangeFormulaSection" hidden>
+                    <h2 class="live-formula-heading" id="extendedRangeFormulaHeading">Extended Range Formula</h2>
+                    <div id="mathExtendedRange" class="formula-container"></div>
+                </div>
+            </div>
+
+            <!-- The signal chain as a block diagram, over live graph views of
+                 the parts of it -->
+            <div id="graphPanelSection" class="graph-panel">
+                <h2 class="graph-panel-heading">Block Diagram and Graphs</h2>
+
+                <div class="chain-strip" id="chainStrip" data-view="eotf">
+                    <span class="chain-node node-light node-scene">Scene light</span>
+                    <span class="chain-link chain-link-in"></span>
+                    <span class="chain-box" data-half="camera">
+                        <span class="chain-box-name">Camera</span>
+                        <span class="chain-row">
+                            <span class="chain-node">Sensor</span>
+                            <span class="chain-link"></span>
+                            <span class="chain-node node-open">Exposure<span class="chain-cite">chosen &mdash; Note 5b</span></span>
+                            <span class="chain-link"><span class="chain-signal"><var>E</var> = {<var>R<sub>S</sub></var>, <var>G<sub>S</sub></var>, <var>B<sub>S</sub></var>}<span class="chain-signal-kind">linear scene light</span></span></span>
+                            <span class="chain-node">OETF<span class="chain-cite">Table 5</span></span>
+                        </span>
+                    </span>
+                    <span class="chain-link chain-link-signal"><span class="chain-signal"><var>E&prime;</var> = {<var>R&prime;</var>, <var>G&prime;</var>, <var>B&prime;</var>}<span class="chain-signal-kind">non-linear signal</span></span></span>
+                    <span class="chain-box" data-half="display">
+                        <span class="chain-box-name">Display<span class="chain-box-note">EOTF = OETF<sup>&minus;1</sup> &compfn; OOTF &mdash; Annex 1</span></span>
+                        <span class="chain-row">
+                            <span class="chain-node">Inverse OETF<span class="chain-cite">Table 5</span></span>
+                            <span class="chain-link"></span>
+                            <span class="chain-node node-ootf">OOTF<span class="chain-cite"><var>&gamma;</var> &mdash; Note 5f</span></span>
+                        </span>
+                    </span>
+                    <span class="chain-link chain-link-out"><span class="chain-signal">{<var>R<sub>D</sub></var>, <var>G<sub>D</sub></var>, <var>B<sub>D</sub></var>}<span class="chain-signal-kind">linear display light</span></span></span>
+                    <span class="chain-node node-light node-display-light">Display light</span>
+                </div>
+
+                <div class="toggle-switch">
+                    <button id="graphViewCameraOetfBtn">HLG Reference OETF</button>
+                    <button id="graphViewEotfBtn" class="active">HLG Reference EOTF</button>
+                    <span class="toggle-row-break" aria-hidden="true"></span>
+                    <button id="graphViewSurroundGammaBtn">System Gamma vs Surround Luminance</button>
+                    <button id="graphViewPeakGammaBtn">System Gamma vs Nominal Peak Luminance</button>
+                </div>
+
+                <!-- View: the HLG Reference OETF (the camera curve the system is named after) -->
+                <div id="cameraOetfView" class="graph-view" hidden>
+                    <blockquote class="graph-quote">
+                        "The mapping of the camera sensor signal output to E may be chosen to achieve the
+                        desired brightness of the scene."
+                        <footer>&mdash; ITU-R BT.2100-3, Note 5b</footer>
+                    </blockquote>
+                    <!-- The exposure, laid out as the EOTF view lays out its
+                         display settings, with the line-ups Note 5b's
+                         freedom has been exercised into above it: then the
+                         name, reset and value box in a head row, and the
+                         slider under them.
+                         Exposure as BT.2390-12 section 6.1
+                         sets it: the signal level the 18 % grey card lands
+                         on, up for more exposure. Note 5b leaves the choice
+                         free, so this is the chain's one free step.
+                         buildExposurePresets fills the buttons, so each
+                         carries a level computed from its exposure rather
+                         than a restated one. -->
+                    <div class="graph-display-settings settings-single" role="group" aria-label="Camera exposure">
+                        <div>
+                            <div class="preset-buttons exposure-presets" id="cameraOetfPresets"></div>
+                            <div class="setting-head">
+                                <label for="cameraOetfExposure" id="cameraOetfExposureLabel">Exposure: 18&nbsp;% grey card (%)</label>
+                                <!-- Puts the exposure back on the line-up the
+                                     view opens at, the one the presets name
+                                     BT.2408-9 -->
+                                <button id="cameraOetfResetBtn" class="reset-button"
+                                        title="Reset to the ITU-R BT.2408-9 line-up"
+                                        aria-label="Reset the camera exposure to the ITU-R BT.2408-9 line-up">&#8634;</button>
+                                <input type="number" id="cameraOetfExposureInput" class="value-input"
+                                       min="21.21" max="67.24" step="0.01" value="37.83"
+                                       aria-labelledby="cameraOetfExposureLabel">
+                            </div>
+                            <input type="range" id="cameraOetfExposure" min="21.21" max="67.24" step="0.01" value="37.83">
+                        </div>
+                    </div>
+                    <!-- The curves, named against the chart, under the
+                         exposure setting -->
+                    <div class="graph-legend">
+                        <span class="legend-item"><svg width="28" height="12" aria-hidden="true"><line x1="1" y1="6" x2="14" y2="6" class="curve-oetf-gamma"></line><line x1="14" y1="6" x2="27" y2="6" class="curve-oetf-log"></line></svg><span>HLG Reference OETF<span class="legend-detail"> (ITU-R BT.2100-3 Table 5)</span></span></span>
+                        <span class="legend-item"><svg width="28" height="12" aria-hidden="true"><line x1="1" y1="6" x2="27" y2="6" class="curve-sdr"></line></svg><span>SDR camera, same exposure<span class="legend-detail" id="cameraOetfSdrDetail"> (ITU-R BT.709-6 OETF; white card at 93.3 %, clips at 1.15&times; white)</span></span></span>
+                    </div>
+                    <div id="cameraOetfGraph" class="graph-canvas"></div>
+                    <div id="cameraOetfAnchors" class="graph-anchors anchors-paired"></div>
+                    <div id="cameraOetfReadout" class="graph-readout readout-unstacked"></div>
+                    <div class="probe-row">
+                        <div class="probe-head">
+                            <button id="cameraOetfProbeResetBtn" class="reset-button"
+                                    title="Reset the graph readout to the white card, scene 1.00"
+                                    aria-label="Reset the graph readout to the 100 % reflectance white card">&#8634;</button>
+                            <input type="number" id="cameraOetfProbeInput" class="value-input" min="0" max="6.190473626876364"
+                                   step="0.01" value="1"
+                                   aria-label="Graph readout scene light, relative to a 100 % reflectance white card">
+                        </div>
+                        <input type="range" id="cameraOetfProbe" min="0" max="6.190473626876364" step="0.01" value="1"
+                               aria-label="Graph readout scene light, relative to a 100 % reflectance white card">
+                    </div>
+                </div>
+
+                <!-- View: the HLG Reference EOTF curve -->
+                <div id="eotfView" class="graph-view">
+                    <!-- The range mode, repeated from the calculator's toggle:
+                         it decides the top of this curve, where super-whites
+                         are displayed rather than clipped (BT.2100-3 Note 5h) -->
+                    <div class="toggle-button-group graph-range-toggle">
+                        <button id="eotfNominalRangeBtn" class="active">Nominal Range (0-100%)</button>
+                        <button id="eotfExtendedRangeBtn">Extended Range (0-109%)</button>
+                    </div>
+                    <div class="graph-legend">
+                        <span class="legend-item"><svg width="28" height="12" aria-hidden="true"><line x1="1" y1="6" x2="27" y2="6" class="curve-adapted"></line></svg><span>Current display<span class="legend-mode legend-mode-nominal" id="eotfRangeMode">Nominal Range</span></span></span>
+                        <span class="legend-item"><svg width="28" height="12" aria-hidden="true"><line x1="1" y1="6" x2="27" y2="6" class="curve-reference"></line></svg><span>Reference display<span class="legend-detail"> (nominal peak <var>L<sub>W</sub></var> = 1&#8239;000 cd/m², 5 cd/m² surround, <var>&gamma;</var> = 1.200)</span></span></span>
+                    </div>
+                    <!-- The display settings the curve is drawn for, repeated
+                         from the calculator's sliders above so the curve can be
+                         moved while it is watched. GraphDisplaySettings writes
+                         every move back to those sliders and re-reads them, the
+                         peak's label and range included: in extended-peak mode
+                         the quantity the slider sets changes. -->
+                    <div class="graph-display-settings" role="group" aria-label="Display settings">
+                        <div>
+                            <div class="setting-head">
+                                <label for="eotfDisplayPeak" id="eotfDisplayPeakLabel">Nominal Peak Luminance (cd/m²)</label>
+                                <button id="eotfPeakResetBtn" class="reset-button"
+                                        title="Reset to the reference display's nominal peak, 1000 cd/m²"
+                                        aria-label="Reset the peak luminance to the reference display's nominal peak of 1000 cd/m²">&#8634;</button>
+                                <input type="number" inputmode="numeric" id="eotfDisplayPeakInput" class="value-input"
+                                       min="100" max="10000" step="1" value="1000"
+                                       aria-labelledby="eotfDisplayPeakLabel">
+                            </div>
+                            <input type="range" id="eotfDisplayPeak" min="100" max="10000" step="1" value="1000">
+                            <!-- Which peak the slider sets, repeated from the
+                                 calculator's toggle and shown with it, in
+                                 Extended Range only -->
+                            <div class="peak-mode-buttons" id="eotfPeakModeButtons">
+                                <button id="eotfPeakNominalBtn" class="active">Peak 100%</button>
+                                <button id="eotfPeakExtendedBtn">Peak 109%</button>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="setting-head">
+                                <label for="eotfDisplaySurround" id="eotfDisplaySurroundLabel">Surround Luminance (cd/m²)</label>
+                                <button id="eotfSurroundResetBtn" class="reset-button"
+                                        title="Reset to the reference surround, 5 cd/m²"
+                                        aria-label="Reset the surround luminance to the reference 5 cd/m²">&#8634;</button>
+                                <input type="number" id="eotfDisplaySurroundInput" class="value-input"
+                                       min="0.05" max="500" step="0.01" value="5"
+                                       aria-labelledby="eotfDisplaySurroundLabel">
+                            </div>
+                            <input type="range" id="eotfDisplaySurround" min="0.05" max="500" step="0.01" value="5">
+                        </div>
+                    </div>
+                    <div id="eotfGraph" class="graph-canvas"></div>
+                    <div id="eotfGamma" class="graph-gamma"></div>
+                    <div id="eotfAnchors" class="graph-anchors"></div>
+                    <div id="eotfReadout" class="graph-readout"></div>
+                    <div class="probe-row">
+                        <div class="probe-head">
+                            <button id="eotfProbeResetBtn" class="reset-button"
+                                    title="Reset the graph readout to HDR Reference White, 75 %"
+                                    aria-label="Reset the graph readout to HDR Reference White at 75 % signal">&#8634;</button>
+                            <input type="number" id="eotfProbeInput" class="value-input" min="0" max="109.02" step="0.1"
+                                   value="75" aria-label="Graph readout signal level in percent">
+                        </div>
+                        <input type="range" id="eotfProbe" min="0" max="109.01826484018264" step="0.1" value="75"
+                               aria-label="Graph readout signal level in percent">
+                    </div>
+                </div>
+
+                <!-- View: System Gamma vs surround luminance (BT.2390-12 Figure 21 view) -->
+                <div id="surroundGammaView" class="graph-view" hidden>
+                    <!-- The range mode, repeated from the calculator's toggle.
+                         System gamma derives from the nominal L_W (BT.2100-3
+                         Note 5f), so the mode reaches this view only through
+                         the pair it reveals: which peak the slider sets. -->
+                    <div class="toggle-button-group graph-range-toggle">
+                        <button id="surroundGammaNominalRangeBtn" class="active">Nominal Range (0-100%)</button>
+                        <button id="surroundGammaExtendedRangeBtn">Extended Range (0-109%)</button>
+                    </div>
+                    <div class="graph-legend">
+                        <span class="legend-item"><svg width="28" height="12" aria-hidden="true"><line x1="1" y1="6" x2="27" y2="6" class="curve-adapted"></line></svg><span>Current display<span class="legend-detail" id="surroundCurrentLegendDetail"> (nominal peak <var>L<sub>W</sub></var> = 1&#8239;000 cd/m²)</span></span></span>
+                        <span class="legend-item"><svg width="28" height="12" aria-hidden="true"><line x1="1" y1="6" x2="27" y2="6" class="curve-family"></line></svg><span>Fixed nominal peaks<span class="legend-detail"> at the preset values, 400&ndash;10&#8239;000 cd/m²</span></span></span>
+                    </div>
+                    <!-- The display settings the curves are drawn for, repeated
+                         from the calculator's sliders above so they can be
+                         moved while the chart is watched. The peak picks the blue curve out of the family the
+                         grey ones draw; the surround places the operating point
+                         along it.
+                         GraphDisplaySettings writes every move back to those
+                         sliders and re-reads them. -->
+                    <div class="graph-display-settings" role="group" aria-label="Display settings">
+                        <div>
+                            <div class="setting-head">
+                                <label for="surroundGammaDisplayPeak" id="surroundGammaDisplayPeakLabel">Nominal Peak Luminance (cd/m²)</label>
+                                <button id="surroundGammaPeakResetBtn" class="reset-button"
+                                        title="Reset to the reference display's nominal peak, 1000 cd/m²"
+                                        aria-label="Reset the peak luminance to the reference display's nominal peak of 1000 cd/m²">&#8634;</button>
+                                <input type="number" inputmode="numeric" id="surroundGammaDisplayPeakInput" class="value-input"
+                                       min="100" max="10000" step="1" value="1000"
+                                       aria-labelledby="surroundGammaDisplayPeakLabel">
+                            </div>
+                            <input type="range" id="surroundGammaDisplayPeak" min="100" max="10000" step="1" value="1000">
+                            <!-- Which peak the slider sets, repeated from the
+                                 calculator's toggle and shown with it, in
+                                 Extended Range only -->
+                            <div class="peak-mode-buttons" id="surroundGammaPeakModeButtons">
+                                <button id="surroundGammaPeakNominalBtn" class="active">Peak 100%</button>
+                                <button id="surroundGammaPeakExtendedBtn">Peak 109%</button>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="setting-head">
+                                <label for="surroundGammaDisplaySurround" id="surroundGammaDisplaySurroundLabel">Surround Luminance (cd/m²)</label>
+                                <button id="surroundGammaSurroundResetBtn" class="reset-button"
+                                        title="Reset to the reference surround, 5 cd/m²"
+                                        aria-label="Reset the surround luminance to the reference 5 cd/m²">&#8634;</button>
+                                <input type="number" id="surroundGammaDisplaySurroundInput" class="value-input"
+                                       min="0.05" max="500" step="0.01" value="5"
+                                       aria-labelledby="surroundGammaDisplaySurroundLabel">
+                            </div>
+                            <input type="range" id="surroundGammaDisplaySurround" min="0.05" max="500" step="0.01" value="5">
+                        </div>
+                    </div>
+                    <div id="surroundGammaGraph" class="graph-canvas"></div>
+                    <div id="surroundGammaReadout" class="graph-readout"></div>
+                    <div class="probe-row">
+                        <div class="probe-head">
+                            <button id="surroundGammaProbeResetBtn" class="reset-button"
+                                    title="Reset the graph readout to the reference surround, 5 cd/m²"
+                                    aria-label="Reset the graph readout to the reference surround of 5 cd/m²">&#8634;</button>
+                            <input type="number" id="surroundGammaProbeInput" class="value-input" min="0.05" max="500"
+                                   step="0.05" value="5" aria-label="Graph readout surround luminance in cd/m²">
+                        </div>
+                        <input type="range" id="surroundGammaProbe" min="-1.3010299956639813" max="2.6989700043360187"
+                               step="0.001" value="0.6989700043360187"
+                               aria-label="Graph readout surround luminance, logarithmic">
+                    </div>
+                </div>
+
+                <!-- View: System Gamma vs nominal peak luminance (BT.2390-12 Figure 20 view) -->
+                <div id="peakGammaView" class="graph-view" hidden>
+                    <!-- The range mode, repeated from the calculator's toggle.
+                         System gamma derives from the nominal L_W (BT.2100-3
+                         Note 5f), so the mode reaches this view only through
+                         the pair it reveals: which peak the slider sets. -->
+                    <div class="toggle-button-group graph-range-toggle">
+                        <button id="peakGammaNominalRangeBtn" class="active">Nominal Range (0-100%)</button>
+                        <button id="peakGammaExtendedRangeBtn">Extended Range (0-109%)</button>
+                    </div>
+                    <div class="graph-legend">
+                        <span class="legend-item"><svg width="28" height="12" aria-hidden="true"><line x1="1" y1="6" x2="27" y2="6" class="curve-adapted"></line></svg><span>Implemented system gamma<span class="legend-detail"> (ITU-R BT.2100-3 Note 5f, formula switch at 400 / 2&#8239;000 cd/m²)</span></span></span>
+                        <span class="legend-item"><svg width="28" height="12" aria-hidden="true"><circle cx="14" cy="6" r="4.5" class="marker-dot"></circle></svg><span>Current display<span class="legend-detail" id="peakCurrentLegendDetail"> (nominal peak <var>L<sub>W</sub></var> = 1&#8239;000 cd/m², 5 cd/m² surround)</span></span></span>
+                        <span class="legend-item"><svg width="28" height="12" aria-hidden="true"><line x1="1" y1="6" x2="27" y2="6" class="curve-family-dashed"></line></svg><span>Basic formula</span></span>
+                        <span class="legend-item"><svg width="28" height="12" aria-hidden="true"><line x1="1" y1="6" x2="27" y2="6" class="curve-family"></line></svg><span>Extended formula (<var>κ</var> = 1.111)</span></span>
+                    </div>
+                    <!-- The display settings the curves are drawn for, repeated
+                         from the calculator's sliders above so they can be
+                         moved while the chart is watched. The surround shifts every curve here; the peak places the
+                         operating point along the implemented one.
+                         GraphDisplaySettings writes every move back to those
+                         sliders and re-reads them. -->
+                    <div class="graph-display-settings" role="group" aria-label="Display settings">
+                        <div>
+                            <div class="setting-head">
+                                <label for="peakGammaDisplayPeak" id="peakGammaDisplayPeakLabel">Nominal Peak Luminance (cd/m²)</label>
+                                <button id="peakGammaPeakResetBtn" class="reset-button"
+                                        title="Reset to the reference display's nominal peak, 1000 cd/m²"
+                                        aria-label="Reset the peak luminance to the reference display's nominal peak of 1000 cd/m²">&#8634;</button>
+                                <input type="number" inputmode="numeric" id="peakGammaDisplayPeakInput" class="value-input"
+                                       min="100" max="10000" step="1" value="1000"
+                                       aria-labelledby="peakGammaDisplayPeakLabel">
+                            </div>
+                            <input type="range" id="peakGammaDisplayPeak" min="100" max="10000" step="1" value="1000">
+                            <!-- Which peak the slider sets, repeated from the
+                                 calculator's toggle and shown with it, in
+                                 Extended Range only -->
+                            <div class="peak-mode-buttons" id="peakGammaPeakModeButtons">
+                                <button id="peakGammaPeakNominalBtn" class="active">Peak 100%</button>
+                                <button id="peakGammaPeakExtendedBtn">Peak 109%</button>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="setting-head">
+                                <label for="peakGammaDisplaySurround" id="peakGammaDisplaySurroundLabel">Surround Luminance (cd/m²)</label>
+                                <button id="peakGammaSurroundResetBtn" class="reset-button"
+                                        title="Reset to the reference surround, 5 cd/m²"
+                                        aria-label="Reset the surround luminance to the reference 5 cd/m²">&#8634;</button>
+                                <input type="number" id="peakGammaDisplaySurroundInput" class="value-input"
+                                       min="0.05" max="500" step="0.01" value="5"
+                                       aria-labelledby="peakGammaDisplaySurroundLabel">
+                            </div>
+                            <input type="range" id="peakGammaDisplaySurround" min="0.05" max="500" step="0.01" value="5">
+                        </div>
+                    </div>
+                    <div id="peakGammaGraph" class="graph-canvas"></div>
+                    <div id="peakGammaReadout" class="graph-readout"></div>
+                    <div class="probe-row">
+                        <div class="probe-head">
+                            <button id="peakGammaProbeResetBtn" class="reset-button"
+                                    title="Reset the graph readout to the reference nominal peak, 1000 cd/m²"
+                                    aria-label="Reset the graph readout to the reference nominal peak of 1000 cd/m²">&#8634;</button>
+                            <input type="number" id="peakGammaProbeInput" class="value-input" min="100" max="10000"
+                                   step="10" value="1000" aria-label="Graph readout nominal peak luminance in cd/m²">
+                        </div>
+                        <input type="range" id="peakGammaProbe" min="2" max="4" step="0.002" value="3"
+                               aria-label="Graph readout nominal peak luminance, logarithmic">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="documentation">
+        <div class="container">
+            <h2>Documentation</h2>
+            <p>
+                This HLG Display Adaptation Calculator implements the Hybrid Log-Gamma (HLG) system as specified in <a href="https://www.itu.int/rec/R-REC-BT.2100" target="_blank">ITU-R BT.2100-3</a>, with calculations for system gamma and HDR Reference White following <em>ITU-R BT.2100-3 Note 5f</em>, <em><a href="https://www.itu.int/pub/R-REP-BT.2390" target="_blank">ITU-R BT.2390-12 Section 6.2</a></em> and <em><a href="https://www.itu.int/pub/R-REP-BT.2408" target="_blank">ITU-R BT.2408-9 Section 2.1</a></em> respectively.
+            </p>
+            <p>
+                The intention is to help users understand more about how the Hybrid Log-Gamma (HLG) system works.
+            </p>
+            <p>
+                The idea for this tool was inspired by work related to <a href="https://tech.ebu.ch/publications/r167" target="_blank">EBU Recommendation R 167</a> - <em>Reference Monitors: Predefined Modes for HLG</em>.
+            </p>
+            <h3>What is Hybrid Log-Gamma (HLG)?</h3>
+            <p>
+                Hybrid Log-Gamma (HLG) is one of two High Dynamic Range (HDR) formats defined in <a href="https://www.itu.int/rec/R-REC-BT.2100" target="_blank">ITU-R BT.2100-3</a>. HLG was created by the BBC and NHK. It is designed to adapt to displays with different peak luminance capabilities under different viewing conditions, ensuring a consistent perceptual experience on a wide range of devices without requiring metadata or additional processing.
+            </p>
+
+            <p>
+                HLG is a <strong><em>relative scene light</em></strong> to <strong><em>log</em></strong> transfer function. Unlike PQ (Perceptual Quantizer), which encodes absolute display luminance values, HLG maintains relative scene luminance relationships while allowing adaptation to different nominal peak luminance values.
+            </p>
+
+            <p>
+                HLG achieves this by applying a transfer function that blends characteristics of both traditional SDR gamma encoding and logarithmic HDR encoding.
+            </p>
+
+
+            <h3>Key benefits of HLG</h3>
+            <ol>
+                <li>
+                    <strong>Adaptive to display peak luminance and surround luminance</strong>
+                    <p>HLG adapts to different display luminance levels and ambient lighting conditions, ensuring a consistent visual perception of brightness across different displays. This adaptability makes it future-proof, as HLG content will scale naturally with advancements in display technology.</p>
+                </li>
+                <li>
+                    <strong>No metadata required and better suited as an archive format</strong>
+                    <p>HLG does not require metadata, which simplifies production, distribution, and device compatibility. Additionally, HLG is better suited as an archive format, as HLG is based on relative brightness, eliminating the need for regrading/remastering or metadata-dependent tone mapping as display technology evolves.</p>
+                </li>
+                <li>
+                    <strong>Ideal for live HDR production and broadcast</strong>
+                    <p>HLG is well suited for live HDR production workflows. It eliminates the need for complex metadata processing, making it the preferred HDR format for live HDR production and broadcast. A common approach for live HDR production today is the "single-master" HDR production workflow with SDR shading - documented in <a href="https://www.itu.int/pub/R-REP-BT.2408" target="_blank">ITU-R BT.2408-9 Section 7.3.2, HLG production with SDR shading</a>.</p>
+                </li>
+            </ol>
+
+            <h3>Human visual system and HLG design principles</h3>
+            <p>
+                The human visual system responds logarithmically to light and adapts to different viewing conditions. Recognizing that people view content on various displays in widely different viewing environments, HLG was designed with this in mind.
+            </p>
+
+            <p>
+                When either peak luminance of the display or the viewing environment surround luminance change, the HLG system gamma is calculated and adjusted according to the formulas specified in <a href="https://www.itu.int/rec/R-REC-BT.2100" target="_blank">ITU-R BT.2100-3, Note 5f</a> and <a href="https://www.itu.int/pub/R-REP-BT.2390" target="_blank">ITU-R BT.2390-12 Section 6.2</a>.
+            </p>
+
+            <p>
+                That adaptive behaviour is precisely what this <strong>HLG Display Adaptation Calculator</strong> aims to demonstrate - as nominal peak luminance or surround luminance changes, the system gamma and resulting HDR Reference White luminance value automatically adjust to maintain a consistent perceptual appearance.
+            </p>
+
+            <p>
+                In professional environments, adjustment of nominal peak luminance might be necessary when:
+            </p>
+            <ul>
+                <li>Matching different displays with varying peak luminance capabilities that are used in the same room under identical viewing conditions</li>
+                <li>Accommodating viewing environments that differ significantly from reference conditions</li>
+                <li>Reducing eye strain in extended production sessions where monitors must be viewed in close proximity</li>
+            </ul>
+
+            <h3>How HLG adapts to different displays and viewing environments</h3>
+            <blockquote class="epigraph">
+                “The most important aspect of any TV system is the OOTF”
+                <footer>&mdash; Masayuki Sugawara, when Deputy Head of NHK STRL, as quoted by Andrew Cotton in <a href="https://www.w3.org/Graphics/Color/Workshop/slides/talk/cotton1" target="_blank">Hybrid Log-Gamma HDR, Part 1: Mixed Display and Viewing Environments</a> (BBC R&amp;D, W3C Workshop on Wide Colour Gamut and HDR for the Web, March 2021)</footer>
+            </blockquote>
+            <p>
+                High Dynamic Range (HDR) content created for broadcast and home entertainment should be displayed in a way that remains <strong>visually consistent</strong> across different peak luminance values and ambient conditions. This is achieved through the <strong>Opto-Optical Transfer Function (OOTF)</strong>, which maps relative scene-referred light to displayed light:
+            </p>
+
+            <p><span class="formula-container">\text{displayed light} \propto \text{scene light}^{\gamma}</span></p>
+            <div class="formula-container">L_d \propto L_s^{\gamma}</div>
+            <p>where:</p>
+            <ul>
+                <li>L<sub>d</sub> is displayed light (cd/m²)</li>
+                <li>L<sub>s</sub> is relative scene light</li>
+                <li>γ is system gamma</li>
+            </ul>
+
+            <p>
+                HLG adapts to different nominal peak luminance values and surround viewing conditions.
+            </p>
+            <ul>
+                <li><strong>A higher nominal peak luminance</strong> requires a <strong>higher</strong> system gamma value (<a href="https://www.itu.int/rec/R-REC-BT.2100" target="_blank">ITU-R BT.2100-3</a>)</li>
+                <li><strong>A brighter surround environment</strong> requires a <strong>lower</strong> system gamma value (<a href="https://www.itu.int/pub/R-REP-BT.2390" target="_blank">ITU-R BT.2390-12</a>)</li>
+            </ul>
+
+            <h3>HLG Transfer Functions</h3>
+            <h4>Opto-Electronic Transfer Function (OETF)</h4>
+            <p>
+                The HLG Reference OETF is a piecewise function that transforms scene linear light to the non-linear HLG signal. It consists of:
+            </p>
+            <ul>
+                <li>A square-root curve for dark and mid-tones (up to 1/12 scene light)</li>
+                <li>A logarithmic curve for highlights (above 1/12 scene light)</li>
+            </ul>
+
+            <div class="formula-container">E' = \text{OETF}[E] = \begin{cases} 
+                \sqrt{3E} & \text{for } 0 \leq E \leq \frac{1}{12} \\
+                a \cdot \ln(12E - b) + c & \text{for } \frac{1}{12} < E \leq 1
+                \end{cases}
+            </div>
+
+            <p>
+                This hybrid approach preserves detail in shadows with the square-root segment while providing extended highlight range with the logarithmic segment.
+            </p>
+            
+            <h4>Inverse OETF</h4>
+            <p>
+                The Inverse OETF converts the non-linear HLG signal back to scene linear light. It's the first step in the EOTF (Electro-Optical Transfer Function) chain, before applying the OOTF (Opto-Optical Transfer Function).
+            </p>
+            <p>
+                For the HLG system, the inverse OETF is defined as:
+            </p>
+            <div class="formula-container">E = \begin{cases}
+            \frac{(E')^2}{3} & \text{for } 0 \leq E' \leq 0.5 \\
+            \frac{\exp\left(\frac{E' - c}{a}\right) + b}{12} & \text{for } 0.5 < E' \leq 1
+            \end{cases}</div>
+            <p>
+                Where a, b, and c are constants defined in <a href="https://www.itu.int/rec/R-REC-BT.2100" target="_blank">ITU-R BT.2100-3</a>:
+            </p>
+            <ul>
+                <li><span class="formula-container">a = 0.17883277</span></li>
+                <li><span class="formula-container">b = 0.28466892 = 1 - 4a</span></li>
+                <li><span class="formula-container">c = 0.55991073 = 0.5 - a \cdot \ln(4a)</span></li>
+            </ul>
+
+            <h4>The Opto-Optical Transfer Function (OOTF)</h4>
+            <p>
+                As explained in <a href="https://www.itu.int/pub/R-REP-BT.2390" target="_blank">ITU-R BT.2390-12 Section 6.2</a>, the light output of a television display is not proportional to the light detected by the camera. The overall system non-linearity, or "rendering intent," is defined by the opto-optical transfer function (OOTF). The OOTF maps relative scene linear light to display linear light to compensate for the psychovisual effects of watching an emissive screen in a dark or dim environment.
+            </p>
+
+            <p>
+                For HLG the OOTF is applied to the luminance component only, rather than independently to each color component as done in SDR television. This approach prevents color saturation and hue distortions that would otherwise occur when adapting content to displays of different peak luminance. According to <a href="https://www.itu.int/rec/R-REC-BT.2100" target="_blank">ITU-R BT.2100-3 Table 5</a>, the HLG reference OOTF is therefore given by:
+            </p>
+
+            <div class="formula-container">F_D = \text{OOTF}[E] = \alpha Y_S^{\gamma-1} E</div>
+
+            <p>Where the scene luminance is calculated as:</p>
+            <div class="formula-container">Y_S = 0.2627R_S + 0.6780G_S + 0.0593B_S</div>
+
+            <p>And the displayed RGB components are:</p>
+            <ul>
+                <li><span class="formula-container">R_D = \alpha Y_S^{\gamma-1} R_S</span></li>
+                <li><span class="formula-container">G_D = \alpha Y_S^{\gamma-1} G_S</span></li>
+                <li><span class="formula-container">B_D = \alpha Y_S^{\gamma-1} B_S</span></li>
+            </ul>
+
+            <p>Where:</p>
+            <ul>
+                <li><span class="formula-container">F_D</span> is luminance of a displayed linear component {R<sub>D</sub>, G<sub>D</sub>, or B<sub>D</sub>}, in cd/m²</li>
+                <li><span class="formula-container">E</span> is a signal for each color component {R<sub>S</sub>, G<sub>S</sub>, B<sub>S</sub>} proportional to scene linear light normalized to the range [0:1]</li>
+                <li><span class="formula-container">Y_S</span> is the normalized linear scene luminance</li>
+                <li><span class="formula-container">\alpha</span> is the variable for user gain in cd/m². It represents L<sub>W</sub>, the nominal peak luminance of a display for achromatic pixels</li>
+                <li><span class="formula-container">\gamma</span> is the system gamma. γ = 1.2 at the nominal peak luminance of 1000 cd/m². For displays of nominal peak luminance other than 1000 cd/m², the system gamma should be adjusted according to the gamma formulae in Note 5f</li>
+            </ul>
+
+            <h4>Electro-Optical Transfer Function (EOTF)</h4>
+            <p>
+                The complete HLG Reference EOTF process consists of three conceptual steps:
+            </p>
+            <ol>
+                <li>Apply black level lift (if enabled): <span class="formula-container">E'_{\text{lifted}} = \max(0, (1-\beta)E' + \beta)</span></li>
+                <li>Convert to scene linear light using the inverse OETF</li>
+                <li>Apply the OOTF with the user gain α set to the nominal peak luminance L<sub>W</sub>, giving display luminance in cd/m²: <span class="formula-container">F_D = \alpha Y_S^{(\gamma-1)} E</span> (<a href="https://www.itu.int/rec/R-REC-BT.2100" target="_blank">ITU-R BT.2100-3</a> Table 5)</li>
+            </ol>
+            <p>
+                This process ensures that HLG content maintains perceptual consistency across different display technologies and viewing environments.
+            </p>
+
+            <h3>Understanding the HLG system gamma formula</h3>
+            <p>
+                HLG adapts system gamma γ based on the display's nominal peak luminance L<sub>W</sub> and the surrounding viewing conditions.
+                This ensures consistent perceptual brightness across different display technologies. The calculation follows the recommendations of <a href="https://www.itu.int/rec/R-REC-BT.2100" target="_blank">ITU-R BT.2100-3</a> and <a href="https://www.itu.int/pub/R-REP-BT.2390" target="_blank">ITU-R BT.2390-12</a>.
+            </p>
+
+            <p>
+                The nominal peak luminance value of 1000 cd/m² in the formula for the HLG system gamma is used as a reference condition. It is not a signal constraint. When the BBC and NHK were developing HLG, both ran subjective tests to find the system gamma for a 1000 cd/m² display: NHK found an average preferred value of 1.18 on a 1000 cd/m² OLED, and the BBC found 1.29 for the best SDR-compatible picture. Weighing HDR production over SDR compatibility, a value of 1.2 was adopted for the reference 1000 cd/m² display in a 5 cd/m² surround (ITU-R BT.2390-12 Section 6.2). This configuration became HLG's reference condition, serving as the baseline from which all other viewing conditions are measured and calculated.
+            </p>
+
+            <h4>1. Baseline HLG system gamma calculation</h4>
+
+            <p>
+                ITU-R BT.2100-3 Note 5f defines two formulas for adjusting the system gamma based on the nominal peak luminance (<span class="formula-container">L_W</span>), with different formulas optimized for different luminance ranges:
+            </p>
+            
+            <p>
+                <strong>For displays within the usual production monitoring range (400 cd/m² ≤ <span class="formula-container">L_W</span> ≤ 2000 cd/m²):</strong>
+            </p>
+            <div class="formula-container">\gamma = 1.2 + 0.42 \log_{10} \left( \frac{L_W}{1000} \right)</div>
+            
+            <p>
+                <strong>For displays outside the usual production monitoring range (<span class="formula-container">L_W</span> < 400 cd/m² or <span class="formula-container">L_W</span> > 2000 cd/m²):</strong>
+            </p>
+            <div class="formula-container">\gamma = 1.2 \times \kappa^{\log_2 \left( \frac{L_W}{1000} \right)} \quad \text{where } \kappa = 1.111</div>
+            
+            <p>
+                Both formulas are centered around the reference point of 1000 cd/m², where they produce identical results with a system gamma of 1.2. The second formula is based on a logarithmic power law and provides better performance at extreme luminance values. Within the 400–2000 cd/m² range, <a href="https://www.itu.int/pub/R-REP-BT.2390" target="_blank">ITU-R BT.2390-12 Section 6.2</a> notes that the two models are "virtually identical and will provide equally good performance".
+            </p>
+            
+            <h4>2. Surround luminance adaptation</h4>
+            
+            <p>
+                In addition to peak luminance adjustment, <a href="https://www.itu.int/pub/R-REP-BT.2390" target="_blank">ITU-R BT.2390 Section 6.2</a> describes how system gamma should be reduced when the viewing environment is brighter than the 5 cd/m² reference surround. The Report presents two models for this; the calculator implements the multiplicative model with the surround luminance compensation factor (<span class="formula-container">\mu</span>), which can be applied to either of the above formulas:
+            </p>
+            
+            <div class="formula-container">\gamma = \gamma_{\text{baseline}} \times \mu^{\log_2 \left( \frac{L_{surround}}{L_{surround\ ref}} \right)} \quad \text{where } \mu = 0.98, L_{surround\ ref} = 5 \text{ cd/m}^2</div>
+
+            <p>
+                Combining this with either of the baseline formulas gives the complete formula for system gamma:
+            </p>
+            
+            <p>
+                For displays within the usual production monitoring range (400 cd/m² ≤ <span class="formula-container">L_W</span> ≤ 2000 cd/m²):
+            </p>
+            <div class="formula-container">\gamma = \left( 1.2 + 0.42 \log_{10} \left( \frac{L_W}{1000} \right) \right) \times \mu^{\log_2 \left( \frac{L_{surround}}{L_{surround\ ref}} \right)}</div>
+            
+            <p>
+                For displays outside the usual production monitoring range (<span class="formula-container">L_W</span> < 400 cd/m² or <span class="formula-container">L_W</span> > 2000 cd/m²):
+            </p>
+            <div class="formula-container">\gamma = 1.2 \times \kappa^{\log_2 \left( \frac{L_W}{L_{\text{ref}}} \right)} \times \mu^{\log_2 \left( \frac{L_{surround}}{L_{surround\ ref}} \right)}</div>
+
+            <h4>Formula components</h4>
+            <ol>
+                <li>
+                    <strong>Reference System Gamma: </strong>(<span class="formula-container">\gamma_{\text{ref}}</span>)
+                    <p>Base gamma value for reference conditions: display at 1000 cd/m² in a 5 cd/m² surround</p>
+                </li>
+                <li>
+                    <strong>Peak Luminance Adaptation: </strong><span class="formula-container">\kappa^{\log_2(L_W/L_{\text{ref}})}</span> or <span class="formula-container">0.42 \log_{10}(L_W/1000)</span>
+                    <p>Adjusts gamma based on nominal peak luminance relative to reference</p>
+                </li>
+                <li>
+                    <strong>Surround Luminance Adaptation: </strong><span class="formula-container">\mu^{\log_2(L_{surround}/L_{surround\ ref})}</span>
+                    <p>Adjusts gamma based on viewing environment relative to reference luminance</p>
+                </li>
+            </ol>
+
+            <table class="formula-table">
+                <thead>
+                    <tr>
+                        <th class="formula-table-header-label">Label</th>
+                        <th class="formula-table-header-value">Value</th>
+                        <th class="formula-table-header-description">Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="formula-label"><span class="formula-container">\gamma_{\text{ref}}</span></td>
+                        <td class="formula-value">1.2</td>
+                        <td class="formula-description">Reference system gamma with a 1000 cd/m² peak luminance display</td>
+                    </tr>
+                    <tr>
+                        <td class="formula-label"><span class="formula-container">\kappa</span></td>
+                        <td class="formula-value">1.111</td>
+                        <td class="formula-description">Peak luminance adaptation factor of the extended-range formula (<a href="https://www.itu.int/rec/R-REC-BT.2100" target="_blank">ITU-R BT.2100-3, Note 5f</a>)</td>
+                    </tr>
+                    <tr>
+                        <td class="formula-label"><span class="formula-container">L_W</span></td>
+                        <td class="formula-value">(cd/m²)</td>
+                        <td class="formula-description">Nominal peak luminance of the display in cd/m²</td>
+                    </tr>
+                    <tr>
+                        <td class="formula-label"><span class="formula-container">L_{\text{ref}}</span></td>
+                        <td class="formula-value">1000</td>
+                        <td class="formula-description">Reference peak luminance in cd/m²</td>
+                    </tr>
+                    <tr>
+                        <td class="formula-label"><span class="formula-container">\mu</span></td>
+                        <td class="formula-value">0.98</td>
+                        <td class="formula-description">Surround luminance compensation factor (<a href="https://www.itu.int/pub/R-REP-BT.2390" target="_blank">ITU-R BT.2390-12, Section 6.2</a>)</td>
+                    </tr>
+                    <tr>
+                        <td class="formula-label"><span class="formula-container">L_{surround}</span></td>
+                        <td class="formula-value">(cd/m²)</td>
+                        <td class="formula-description">Surround luminance in cd/m²</td>
+                    </tr>
+                    <tr>
+                        <td class="formula-label"><span class="formula-container">L_{surround\ ref}</span></td>
+                        <td class="formula-value">5</td>
+                        <td class="formula-description">Reference surround luminance in cd/m² (<a href="https://www.itu.int/rec/R-REC-BT.2100" target="_blank">ITU-R BT.2100-3</a>)</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h4>Empirically derived constants</h4>
+            <p>
+                The <span class="formula-container">\kappa</span> (kappa) value of 1.111 is an empirically derived coefficient (<a href="https://www.itu.int/rec/R-REC-BT.2100" target="_blank">ITU-R BT.2100-3, Note 5f</a>) that adjusts system gamma to maintain perceptual contrast consistency across different peak luminance levels. ITU-R BT.2390-12 Section 6.2 fits it to the BBC's subjective tests and attributes the extended model to Tim Borer's 2017 paper on the display of HDR images under varying viewing conditions (<a href="https://www.bbc.co.uk/rd/publications/display-high-dynamic-range-images-varying-viewing-conditions" target="_blank">BBC R&amp;D WHP 369</a>), which also introduces the surround model below.
+            </p>
+
+            <p>
+                The <span class="formula-container">\mu</span> (mu) value of 0.98 is a compensation factor (<a href="https://www.itu.int/pub/R-REP-BT.2390" target="_blank">ITU-R BT.2390-12, Section 6.2</a>) that adjusts system gamma based on surround luminance, ensuring perceptual consistency in different viewing environments.
+            </p>
+
+            <h4>How HLG adapts according to the formula</h4>
+
+            <ul>
+                <li>
+                    <strong>For brighter displays</strong> (L<sub>W</sub> > 1000 cd/m²)
+                    <ul>
+                        <li>The peak luminance ratio L<sub>W</sub>/L<sub>ref</sub> becomes > 1</li>
+                        <li>This increases the gamma through the <span class="formula-container">\kappa</span> (kappa) or the logarithmic term</li>
+                        <li>Higher gamma maintains perceived contrast at higher luminance values</li>
+                    </ul>
+                </li>
+                <li>
+                    <strong>For brighter viewing environments</strong> (L<sub>surround</sub> > 5 cd/m²)
+                    <ul>
+                        <li>The surround ratio L<sub>surround</sub>/L<sub>surround ref</sub> becomes > 1</li>
+                        <li>This decreases gamma through the <span class="formula-container">\mu</span> compensation factor</li>
+                        <li>Lower gamma compensates for viewer adaptation to brighter surroundings</li>
+                    </ul>
+                </li>
+            </ul>
+            <p>
+                Under reference conditions, with a 1000 cd/m² peak luminance display with 5 cd/m² surround luminance, both ratios equal 1, resulting in the reference gamma of 1.2.
+            </p>
+
+            <h3>HDR Reference White</h3>
+            <p>
+                <a href="https://www.itu.int/pub/R-REP-BT.2408" target="_blank">ITU-R BT.2408-9</a> defines "HDR Reference White" as the nominal signal level obtained from an HDR camera and a 100% reflectance white card, also known as "Diffuse White." This represents a guiding reference point in the HDR signal, where the luminance range above it provides headroom for specular highlights and emissive sources.
+            </p>
+            <p>
+                According to ITU-R BT.2408-9, the HDR Reference White point corresponds to a signal level of 75% for HLG and 58% for PQ. For PQ, which encodes absolute luminance values, the 58% signal value always represents 203 cd/m². For HLG, a signal level of 75% produces a luminance of 203 cd/m² when displayed on a reference monitor with 1000 cd/m² peak luminance in a reference viewing environment of 5 cd/m² surround luminance, with the system gamma set to 1.2.
+            </p>
+            <p>
+                If the nominal peak luminance or surround luminance is changed, the HLG system gamma, and with it the luminance produced by the 75% signal, adjusts accordingly. The signal level itself does not change: as ITU-R BT.2408-9 notes, "The nominal signal levels in Table 1 do not change"; for HLG it is the nominal luminance values that vary with the display's peak luminance.
+            </p>
+
+            <h4>Calculation Method</h4>
+            <p>The 75% signal is first converted to the normalized linear scene luminance (Y<sub>S</sub>) using the inverse OETF:</p>
+            <div class="formula-container">Y_S = \frac{\exp \left( \frac{E' - c}{a} \right) + b}{12} \approx 0.2650</div>
+
+            <p>Where:</p>
+            <ul>
+                <li><b>E'</b> = 0.75 (75% HLG reference signal level)</li>
+                <li><b>a, b, c</b> are the constants defined in <a href="https://www.itu.int/rec/R-REC-BT.2100" target="_blank">ITU-R BT.2100-3</a> Table 5</li>
+            </ul>
+
+            <p>
+                Y<sub>S</sub> is scene luminance, not yet Reference White, which ITU-R BT.2408-9 defines as a display luminance. Applying the OOTF (ITU-R BT.2100-3 Table 5) with the achromatic signal E = Y<sub>S</sub>, and the user gain α set to the nominal peak luminance L<sub>W</sub>, gives the Reference White luminance:
+            </p>
+            <div class="formula-container">L_{\text{ref white}} = L_W \times Y_S^{\gamma}</div>
+            <p>
+                At the reference condition (L<sub>W</sub> = 1000 cd/m² and system gamma γ = 1.2), this yields 1000 × 0.2650<sup>1.2</sup> ≈ 203 cd/m², the HDR Reference White level in ITU-R BT.2408-9 Table 1. When black level lift is enabled, the 75% signal is first lifted (E' → max(0, (1−β)E' + β)) before the inverse OETF, so Reference White also depends slightly on β.
+            </p>
+
+            <h3>Black Level Lift and PLUGE</h3>
+            
+            <h4>Display Black Level Limitations</h4>
+            
+            <p>
+                In practice, all display technologies have physical limitations that prevent them from producing absolutely perfect black (zero luminance):
+            </p>
+            
+            <ul>
+                <li>LCD displays have backlight bleed issues, even with local dimming technology.</li>
+                <li>LED displays have similar limitations with light leakage.</li>
+                <li>OLED displays can get very close to perfect black by turning off individual pixels, but even they have some minimal light emission or reflectance in real viewing environments.</li>
+            </ul>
+            
+            <h4>Black Level Lift Parameter</h4>
+            
+            <p>
+                The black level lift parameter (β) in the HLG system was specifically designed to address this reality. It mathematically adjusts how the HLG signal is mapped to display light output to compensate for these non-zero black levels. This ensures that content appears consistent across different displays with varying black level capabilities.
+            </p>
+            
+            <p>
+                Without this adjustment, the same HLG content would appear differently on displays with different black level capabilities, with shadows and dark details being rendered inconsistently. The black level lift formula in ITU-R BT.2100-3 provides a standardized way to maintain perceptual consistency across diverse display technologies.
+            </p>
+            
+            <p>
+                According to <a href="https://www.itu.int/rec/R-REC-BT.2100" target="_blank">ITU-R BT.2100-3 Table 5</a>, black level lift is defined as:
+            </p>
+            
+            <div class="formula-container">\beta = \sqrt{3\left(\frac{L_B}{L_W}\right)^{1/\gamma}}</div>
+            
+            <p>Where:</p>
+            <ul>
+                <li>L<sub>B</sub> is the display luminance for black in cd/m²</li>
+                <li>L<sub>W</sub> is nominal peak luminance of the display in cd/m² for achromatic pixels</li>
+                <li>γ is the system gamma</li>
+            </ul>
+            
+            <p>
+                When black level lift is enabled, the HLG EOTF applies this adjustment to each signal component before further processing:
+            </p>
+            
+            <div class="formula-container">E'_{lifted} = \max(0, (1-\beta)E' + \beta)</div>
+            
+            <h4>Using PLUGE for Black Level Calibration</h4>
+            
+            <p>
+                PLUGE, a term originally derived from "Picture Line Up Generating Equipment", is a standardized test signal defined in <a href="https://www.itu.int/rec/R-REC-BT.814" target="_blank">ITU-R BT.814-4</a> specifically designed for accurately setting black levels in display systems. The PLUGE test pattern contains bars slightly above and below reference black level, allowing engineers and users to properly calibrate the darkest parts of the image.
+            </p>
+            
+            <p>
+                In the alignment procedure of ITU-R BT.814-4, the user black level lift control is adjusted so that the darker stripe just disappears while the lighter stripe remains visible. This ensures that shadow detail is preserved while maintaining proper black level performance.
+            </p>
+            
+            <h4>Relationship Between PLUGE and Black Level Lift</h4>
+            
+            <p>The PLUGE calibration and black level lift parameter work together in a complete HLG display calibration workflow:</p>
+            
+            <ol>
+                <li>First, PLUGE is used to accurately measure and calibrate a display's actual physical black level (L<sub>B</sub>), determining the minimum luminance the display can produce.</li>
+                <li>Once the true black level is known, this value is used in the black level lift formula to calculate the appropriate β parameter value.</li>
+                <li>The calculated β value is then applied in the HLG EOTF as part of signal processing.</li>
+            </ol>
+
+            <p>
+                ITU-R BT.2100-3 (Table 3, Note 3d) specifically notes: "For PQ in a non-reference viewing environment, or for HLG (in any viewing environment), the black level should be adjusted using the PLUGE test signal and procedure specified in Recommendation ITU-R BT.814." This requirement ensures consistent rendering of dark tones across different display technologies.
+            </p>
+            
+            <p>
+                Proper black level adjustment using PLUGE is particularly crucial for HLG implementations because HLG is a display-adaptive system. Unlike PQ which encodes absolute luminance values, HLG's adaptability requires accurate black level calibration to maintain perceptual consistency from content creation through to consumer viewing environments.
+            </p>
+            
+            <p>
+                This combined approach ensures that black levels are properly rendered on displays where absolute zero luminance isn't achievable, maintaining perceptual consistency across different display technologies.
+            </p>
+
+            <h3>Understanding Extended Range in HLG</h3>
+            <p>
+                Professional reference monitors should allow toggling between Nominal Range (0-100%) and Extended Range (0-109%). 
+            </p>
+
+            <p>
+                The Extended Range feature allows monitors to display "super-white" signals that extend beyond the nominal 100% signal level, up to 109%: the top of the headroom above nominal peak in <a href="https://tech.ebu.ch/publications/r103" target="_blank">EBU R 103</a> Figure 1, at 10-bit code 1019. R 103 notes that the term "extended range" for the 64–1019 code range is in use but not formally defined. This provides slightly increased dynamic range for HLG content and can allow viewers to see highlight detail that would otherwise be clipped.
+            </p>
+
+            <p>
+                In order to display the Extended Range above the specified peak reference level for 100% signal, the display must have sufficient headroom above its stated peak luminance to allow for 109% to be displayed.
+            </p>
+
+            <p>
+                The normalized signal ratio for Extended Range can be calculated using the 10-bit Narrow Range digital code values:
+            </p>
+            <div class="formula-container">
+            \text{Normalized Extended Range (109\%) ratio} = \frac{1019 - 64}{940 - 64} = 1.090182648401826
+            </div>
+            
+            <p>Where:</p>
+            <ul>
+                <li><span class="formula-container">64</span> is the digital code value for 0% (black level)</li>
+                <li><span class="formula-container">940</span> is the digital code value for 100% (nominal peak white)</li>
+                <li><span class="formula-container">1019</span> is the maximum code value for 10-bit Narrow Range</li>
+            </ul>
+
+            <p>
+                The HLG transfer functions in ITU-R BT.2100-3 Table 5 are specified for signals up to E' = 1, but such super-white signals are anticipated by the Recommendation: Note 5h states that during production "signal values are expected to exceed the range E' = [0.0 : 1.0]" and that they "should not be clipped during production and exchange". The luminance calculation below therefore applies the same EOTF to the 109% signal.
+            </p>
+
+            <h4>Extended Range Luminance Calculation</h4>
+            <p>
+                To calculate the absolute luminance produced by the 109% signal, we apply the complete HLG EOTF, whose OOTF carries the user gain α = L<sub>W</sub> (ITU-R BT.2100-3 Table 5). For an achromatic signal this is:
+            </p>
+            
+            <div class="formula-container">L_{109\%} = L_W \times \left( \text{OETF}^{-1}\left[ \max(0, (1-\beta) \times 1.090182648401826 + \beta) \right] \right)^{\gamma}</div>
+            
+            <p>Where:</p>
+            <ul>
+                <li>L<sub>W</sub> is the nominal peak luminance in cd/m², applied as the OOTF's user gain α</li>
+                <li>The EOTF steps are:</li>
+                <ul>
+                    <li>Applying black level lift (if enabled): <span class="formula-container">E'_{\text{lifted}} = \max(0, (1-\beta)E' + \beta)</span></li>
+                    <li>Converting to scene linear light using the inverse OETF</li>
+                    <li>Applying the OOTF with α = L<sub>W</sub>: <span class="formula-container">F_D = \alpha Y_S^{(\gamma-1)} E</span>, which for an achromatic signal is L<sub>W</sub> × E<sup>γ</sup></li>
+                </ul>
+                <li>γ is the system gamma (calculated based on peak luminance and surround)</li>
+                <li>β is the black level lift parameter (if enabled)</li>
+            </ul>
+
+
+            <h3>References & Further Reading</h3>
+            <h4>ITU Recommendations and Reports</h4>
+            <ul>
+                <li>
+                    <a href="https://www.itu.int/rec/R-REC-BT.2100" target="_blank">ITU-R BT.2100-3</a>
+                    - Image parameter values for high dynamic range television for use in production and international programme exchange
+                </li>
+                <li>
+                    <a href="https://www.itu.int/pub/R-REP-BT.2390" target="_blank">ITU-R BT.2390-12</a>
+                    - High dynamic range television for production and international programme exchange
+                </li>
+                <li>
+                    <a href="https://www.itu.int/pub/R-REP-BT.2408" target="_blank">ITU-R BT.2408-9</a>
+                    - Guidelines for operational practices in high dynamic range television production
+                </li>
+                <li>
+                    <a href="https://www.itu.int/rec/R-REC-BT.814" target="_blank">ITU-R BT.814-4</a>
+                    - Specifications of PLUGE test signals and alignment procedures for setting of brightness and contrast of displays  
+                </li>
+            </ul>
+
+            <h4>EBU Recommendations</h4>
+            <ul>
+                <li>
+                    <a href="https://tech.ebu.ch/publications/r103" target="_blank">EBU R 103</a>
+                    - Video Signal Tolerance in Digital Television Systems
+                </li>
+                <li>
+                    <a href="https://tech.ebu.ch/publications/r167" target="_blank">EBU R 167</a>
+                    - Reference Monitors: Predefined Modes for HLG
+                </li>
+            </ul>
+
+            <h4>BBC Research & Development Publications</h4>
+            <ul>
+                <li><a href="https://www.bbc.co.uk/rd/projects/high-dynamic-range" target="_blank">High Dynamic Range Television and Hybrid Log-Gamma</a></li>
+                <li>
+                    <a href="https://www.w3.org/Graphics/Color/Workshop/slides/talk/cotton1" target="_blank">Hybrid Log-Gamma HDR, Part 1: Mixed Display and Viewing Environments (2021)</a>
+                    - W3C Workshop on Wide Colour Gamut and HDR for the Web (Andrew Cotton)
+                </li>
+                <li>
+                    <a href="https://www.bbc.co.uk/rd/publications/whitepaper283" target="_blank">WHP 283 (2014)</a>
+                    - Non-linear Opto-Electrical Transfer Functions for High Dynamic Range Television (Tim Borer)
+                </li>
+                <li>
+                    <a href="https://www.bbc.co.uk/rd/publications/whitepaper309" target="_blank">WHP 309 (2015)</a>
+                    - A "Display Independent" High Dynamic Range Television System (T. Borer and A. Cotton)
+                </li>
+                <li>
+                    <a href="https://www.bbc.co.uk/rd/publications/whitepaper341" target="_blank">WHP 341 (2019)</a>
+                    - Modelling Brightness Perception for High Dynamic Range Television (K. C. Noland, M. Pindoria and A. Cotton)
+                </li>
+                <li>
+                    <a href="https://downloads.bbc.co.uk/rd/pubs/whp/whp-pdf-files/WHP342.pdf" target="_blank">WHP 342 (2019)</a>
+                    - A Brightness Measure for High Dynamic Range Television (K. C. Noland and M. Pindoria)
+                </li>
+                <li>
+                    <a href="https://www.bbc.co.uk/rd/publications/display-high-dynamic-range-images-varying-viewing-conditions" target="_blank">WHP 369 (2019)</a>
+                    - Display of High Dynamic Range Images Under Varying Viewing Conditions (Tim Borer)
+                </li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

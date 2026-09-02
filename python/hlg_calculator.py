@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Copyright 2025 Thomas Berglund (NRK)
+Copyright 2026 Thomas Berglund (NRK)
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,12 +17,12 @@ limitations under the License.
 ---
 HLG Display Adaptation Calculator
 
-Version: 1.3
-Last modified: 2025-04-28
-Author: Thomas Berglund, with assistance from Claude 3.7 Sonnet, by Anthropic.
+Version: 1.6
+Last modified: 2026-09-02
+Author: Thomas Berglund, with assistance from Claude, by Anthropic.
 
 This HLG Display Adaptation Calculator implements the Hybrid Log-Gamma (HLG) system as specified in
-ITU-R BT.2100, with calculations for System Gamma and HDR Reference White following ITU-R BT.2100 Note 5f,
+ITU-R BT.2100, with calculations for system gamma and HDR Reference White following ITU-R BT.2100-3 Note 5f,
 ITU-R BT.2390 Section 6.2 and ITU-R BT.2408 Section 2.1 respectively.
 
 The intention is to help users understand more about how the Hybrid Log-Gamma (HLG) system works.
@@ -32,11 +32,15 @@ The idea for this tool was inspired by work related to:
         https://tech.ebu.ch/publications/r167
 
 Calculation Modes:
-    nominal  : Calculates System Gamma and HDR Reference White for a standard display setup
-    extended : Calculates nominal luminance of 100% and the extended 109% luminance value
+    nominal      : Calculates system gamma and HDR Reference White for a standard display setup
+    extended     : Calculates nominal luminance of 100% and the extended 109% luminance value
+    extendedpeak : Calculates the nominal peak luminance so the full extended range (0-109%)
+                   fits within --peak; lowering the effective nominal peak this way is the
+                   ITU-R BT.2100-3 Note 5f contrast-control adjustment
 
 Required Parameters:
-    --peak     : Display peak luminance in cd/m² (default: 1000)
+    --peak     : Nominal peak luminance in cd/m² (default: 1000);
+                 in extendedpeak mode, the Extended Peak Luminance
     --surround : Surround luminance in cd/m² (default: 5)
     --mode     : Calculation mode (default: nominal)
 
@@ -50,6 +54,7 @@ Usage examples:
     python3 hlg_calculator.py --peak 1000 --surround 5 --pluge --explain
     python3 hlg_calculator.py --peak 1000 --surround 5 --black 0.005 --pluge --mode nominal --explain
     python3 hlg_calculator.py --peak 1000 --surround 5 --mode extended --explain
+    python3 hlg_calculator.py --peak 2000 --surround 5 --mode extendedpeak --explain
 
 References:
     - ITU-R BT.2100-3: Image parameter values for HDR television
@@ -65,6 +70,12 @@ References:
         Specifications of PLUGE test signals and alignment procedures
         for setting of brightness and contrast of displays
         https://www.itu.int/rec/R-REC-BT.814
+
+    - EBU R 103: Video Signal Tolerance in Digital Television Systems
+        https://tech.ebu.ch/publications/r103
+
+    - EBU R 167: Reference Monitors: Predefined Modes for HLG
+        https://tech.ebu.ch/publications/r167
 
     - High Dynamic Range Television and Hybrid Log-Gamma
         https://www.bbc.co.uk/rd/projects/high-dynamic-range
@@ -97,6 +108,14 @@ def e_print(*args, **kwargs):
     if EXPLAIN:
         print(*args, **kwargs)
 
+def format_precision(value):
+    """Format a value to 4 decimals for explanation output, extending to 6
+    decimals when a small nonzero value would otherwise round away and make
+    the printed arithmetic look wrong (e.g. "1000.00 × 0.0000 = 0.0050")."""
+    if value != 0 and abs(value) < 0.001:
+        return f"{value:.6f}"
+    return f"{value:.4f}"
+
 """
 ITU-R BT.2100-3 HLG Constants
 
@@ -113,8 +132,12 @@ Y_R = 0.2627  # Red luminance coefficient
 Y_G = 0.6780  # Green luminance coefficient 
 Y_B = 0.0593  # Blue luminance coefficient
 
-# ITU-R BT.2100-3 defined 109% signal level (1.090182648401826)
-EXTENDED_RANGE_109 = (1019 - 64) / (940 - 64)
+# 109% signal level (1.090182648401826): the top of the headroom above
+# nominal peak in EBU R 103 Figure 1, from the ITU-R BT.2100-3 Table 9
+# 10-bit narrow-range code values (black 64, nominal peak 940, video data
+# range to 1019). R 103 notes that "extended range" for 64-1019 is a term
+# in use, not a formal definition.
+SIGNAL_LEVEL_109 = (1019 - 64) / (940 - 64)
 
 #-----------------------------------------------------------------------------
 # Section 1: HLG OETF and Inverse OETF
@@ -124,13 +147,17 @@ def hlg_reference_oetf(E):
     """
     HLG Opto-Electronic Transfer Function (OETF) as defined in ITU-R BT.2100-3 Table 5.
     
-    Transforms scene-linear light to the non-linear HLG signal.
+    Transforms scene linear light to the non-linear HLG signal.
     
     Args:
         E (float): Scene linear light normalized to the range [0:1]
         
     Returns:
         float: Non-linear HLG signal value E' in the range [0:1]
+
+    Where diffuse white and an 18% grey card land on this curve is set by the
+    camera exposure ahead of the OETF (BT.2100-3 Note 5b), not by the OETF;
+    see analysis/hlg_oetf_normalization_and_exposure.md.
         
     Reference: ITU-R BT.2100-3, Table 5, HLG Reference OETF
     """
@@ -155,7 +182,8 @@ def hlg_inverse_oetf(E_prime, explain_label=None):
         explain_label (str, optional): Label for explanation output
     
     Returns:
-        float: Scene linear light (E) normalized to the range [0:1].
+        float: Scene linear light (E), normalized so that E = 1 corresponds
+               to the 100% signal; exceeds 1.0 for super-white input (E' > 1).
                A value of 1/12 corresponds to the transition point (E'=0.5).
     
     Reference: ITU-R BT.2100-3, Table 5, Hybrid Log-Gamma (HLG) system,
@@ -165,15 +193,15 @@ def hlg_inverse_oetf(E_prime, explain_label=None):
     E_prime = max(0.0, E_prime)
     
     # Apply the piecewise inverse OETF
-    if E_prime < 0.5:
+    if E_prime <= 0.5:
         # Square law segment (E ≤ 1/12 in original OETF)
         E = (E_prime ** 2) / 3.0
-        
+
         # Explain the calculation if requested
         if explain_label:
             e_print(f"    Applying inverse OETF to convert signal to scene linear light:")
             e_print(f"      Non-linear signal value: {E_prime:.6f}")
-            e_print(f"      Signal < 0.5: Using square law formula for inverse OETF")
+            e_print(f"      Signal ≤ 0.5: Using square law formula for inverse OETF")
             e_print(f"      Formula: E = (E')² / 3")
             e_print(f"      E = ({E_prime:.6f})² / 3 = {E_prime**2:.6f} / 3 = {E:.6f}")
     else:
@@ -186,7 +214,7 @@ def hlg_inverse_oetf(E_prime, explain_label=None):
         if explain_label:
             e_print(f"    Applying inverse OETF to convert signal to scene linear light:")
             e_print(f"      Non-linear signal value: {E_prime:.6f}")
-            e_print(f"      Signal ≥ 0.5: Using logarithmic formula for inverse OETF")
+            e_print(f"      Signal > 0.5: Using logarithmic formula for inverse OETF")
             e_print(f"      Formula: E = (exp((E' - c) / a) + b) / 12")
             e_print(f"      Where: a = {HLG_a:.8f}, b = {HLG_b:.8f}, c = {HLG_c:.8f}")
             e_print(f"      E = (exp(({E_prime:.6f} - {HLG_c:.8f}) / {HLG_a:.8f}) + {HLG_b:.8f}) / 12")
@@ -202,17 +230,17 @@ def hlg_inverse_oetf(E_prime, explain_label=None):
 
 def calculate_system_gamma(Lw, Ls, step_number=None):
     """
-    Calculate the System Gamma (γ) according to formulas specified in:
+    Calculate the system gamma (γ) according to formulas specified in:
     - ITU-R BT.2100-3 Note 5f
     - ITU-R BT.2390 Section 6.2
     
-    The System Gamma is adapted according to the two following conditions:
-    1. The display's peak luminance capability (Lw)
+    The system gamma is adapted according to the two following conditions:
+    1. The display's nominal peak luminance (Lw)
     2. The viewing environment's surround luminance (Ls)
-    
+
     Two different formulas are specified in ITU-R BT.2100-3 Note 5f.
-    The recommended formula depends on the display's peak luminance,
-    each optimized for different peak display luminance ranges:
+    The recommended formula depends on the nominal peak luminance,
+    each optimized for a different nominal peak luminance range:
 
     - For 400 cd/m² ≤ Lw ≤ 2000 cd/m²: γ = 1.2 + 0.42 log₁₀(Lw/1000)
     - For Lw < 400 cd/m² or Lw > 2000 cd/m²: γ = 1.2 × κ^(log₂(Lw/1000))
@@ -220,7 +248,7 @@ def calculate_system_gamma(Lw, Ls, step_number=None):
     ITU-R BT.2100-3 Note 5f:
     "For displays with nominal peak luminance (Lw) other than 1 000 cd/m2,
     or where the effective nominal peak luminance is adjusted through the use
-    of a contrast control, the System Gamma value should be adjusted according
+    of a contrast control, the system gamma value should be adjusted according
     to the formula below and may be rounded to three significant digits:"
     
         γ = 1.2 + 0.42 log₁₀(Lw/1000)
@@ -231,10 +259,10 @@ def calculate_system_gamma(Lw, Ls, step_number=None):
         γ = 1.2 × κ^(log₂(Lw/1000)) where κ = 1.111
         
     The formula is centered around the reference point of 1000 cd/m²,
-    where both formulas produce identical results with a System Gamma of γ = 1.2
+    where both formulas produce identical results with a system gamma of γ = 1.2
     
     In both cases, additional adjustment for surround luminance should be applied:
-        γ = γ × μ^(log₂(Ls/1000))
+        γ = γ × μ^(log₂(Ls/Ls_ref))
         
     The complete extended formula from ITU-R BT.2390 is:
         γ = γ_ref × κ^(log₂(Lw/L_ref)) × μ^(log₂(Ls/Ls_ref))
@@ -243,7 +271,7 @@ def calculate_system_gamma(Lw, Ls, step_number=None):
         - γ_ref = 1.2 (reference gamma at 1000 cd/m² in reference environment)
         - κ = 1.111 (peak luminance adjustment factor)
         - μ = 0.98 (surround luminance adjustment factor)
-        - L_ref = 1000 cd/m² (reference display peak luminance)
+        - L_ref = 1000 cd/m² (reference nominal peak luminance)
         - Ls_ref = 5 cd/m² (reference surround luminance)
 
     Args:
@@ -256,7 +284,7 @@ def calculate_system_gamma(Lw, Ls, step_number=None):
               Where calculation_details_dict contains all intermediate values
     
     Note:
-        Higher display peak luminance requires increased gamma (κ > 1)
+        Higher nominal peak luminance requires increased gamma (κ > 1)
         Brighter viewing environments require decreased gamma (μ < 1)
     
     Reference: ITU-R BT.2100-3 Note 5f and ITU-R BT.2390 Section 6.2
@@ -268,7 +296,7 @@ def calculate_system_gamma(Lw, Ls, step_number=None):
     L_ref = 1000     # L_ref
     Ls_ref = 5       # Ls_ref
     
-    # Select the appropriate formula based on display peak luminance
+    # Select the appropriate formula based on nominal peak luminance
     if 400 <= Lw <= 2000:
         # Basic formula for typical production range (400-2000 cd/m²)
         # γ = 1.2 + 0.42 log₁₀(Lw/L_ref)
@@ -284,13 +312,13 @@ def calculate_system_gamma(Lw, Ls, step_number=None):
     # Following ITU-R BT.2390 Section 6.2
     mu_factor = mu ** math.log2(Ls / Ls_ref)
     
-    # Apply surround adjustment to System Gamma
+    # Apply surround adjustment to system gamma
     gamma = base_gamma * mu_factor
     
     # Print explanation if step number is provided
     if step_number is not None:
         e_print(f"\nStep {step_number}: Calculating System Gamma (γ)")
-        e_print(f"  Peak luminance (Lw): {Lw:.2f} cd/m²")
+        e_print(f"  Nominal peak luminance (Lw): {Lw:.2f} cd/m²")
         e_print(f"  Surround luminance (Ls): {Ls:.2f} cd/m²")
         
         if 400 <= Lw <= 2000:
@@ -313,7 +341,7 @@ def calculate_system_gamma(Lw, Ls, step_number=None):
         if Ls == 5.0:
             e_print(f"  Note: {Ls:.2f} cd/m² is the reference surround luminance")
     
-    # Return both the System Gamma and calculation details
+    # Return both the system gamma and calculation details
     return gamma, {
         'gamma_ref': gamma_ref,   # γ_ref
         'kappa': kappa,           # κ
@@ -325,7 +353,7 @@ def calculate_system_gamma(Lw, Ls, step_number=None):
         'mu_factor': mu_factor
     }
 
-def calculate_black_level_lift(L_B, L_W, gamma, step_number=None):
+def calculate_black_level_lift(L_B, Lw, gamma, step_number=None):
     """
     Calculate the black level lift (β) according to ITU-R BT.2100-3.
     
@@ -334,12 +362,12 @@ def calculate_black_level_lift(L_B, L_W, gamma, step_number=None):
     with different black level capabilities.
     
     Per ITU-R BT.2100-3 Table 5, black level lift is defined as:
-        β = √3(LB/LW)^(1/γ)
-    
+        β = √(3(L_B/Lw)^(1/γ))
+
     Where:
-    - LB is the display luminance for black in cd/m²
-    - LW is nominal peak luminance of the display in cd/m²
-    - γ is the System Gamma
+    - L_B is the display luminance for black in cd/m²
+    - Lw is nominal peak luminance of the display in cd/m²
+    - γ is the system gamma
     
     This parameter ensures proper rendering of the signal's black level on displays
     where absolute zero luminance isn't achievable. It modifies the signal mapping
@@ -347,10 +375,10 @@ def calculate_black_level_lift(L_B, L_W, gamma, step_number=None):
     
     Args:
         L_B (float): Display luminance for black in cd/m².
-        L_W (float): Nominal peak luminance of the display in cd/m².
+        Lw (float): Nominal peak luminance of the display in cd/m².
         gamma (float): System gamma calculated for the display and viewing environment.
         step_number (int, optional): Step number for explanation purposes.
-        
+
     Returns:
         float: Black level lift factor (β).
     
@@ -364,17 +392,17 @@ def calculate_black_level_lift(L_B, L_W, gamma, step_number=None):
             e_print(f"  Since black level is zero or negative, black level lift is disabled (β = 0)")
         return 0.0
         
-    # Calculate black level lift: β = √3(LB/LW)^(1/γ)
-    beta = math.sqrt(3 * ((L_B / L_W) ** (1 / gamma)))
+    # Calculate black level lift: β = √(3(L_B/Lw)^(1/γ))
+    beta = math.sqrt(3 * ((L_B / Lw) ** (1 / gamma)))
     
     # Explanation output
     if step_number is not None:
         e_print(f"\nStep {step_number}: Calculating Black Level Lift (β)")
         e_print(f"  Black level (L_B): {L_B:.4f} cd/m²")
-        e_print(f"  Peak luminance (L_W): {L_W:.2f} cd/m²")
+        e_print(f"  Nominal peak luminance (Lw): {Lw:.2f} cd/m²")
         e_print(f"  System gamma (γ): {gamma:.4f}")
-        e_print(f"  Formula: β = √3(L_B/L_W)^(1/γ)")
-        e_print(f"  β = √3({L_B:.4f}/{L_W:.2f})^(1/{gamma:.4f}) = {beta:.6f}")
+        e_print(f"  Formula: β = √(3(L_B/Lw)^(1/γ))")
+        e_print(f"  β = √(3({L_B:.4f}/{Lw:.2f})^(1/{gamma:.4f})) = {beta:.6f}")
         
         # Educational notes about black level lift
         e_print(f"  Note: Black level lift compensates for the display's inability")
@@ -392,8 +420,8 @@ def hlg_reference_ootf(r_s, g_s, b_s, gamma, alpha=1.0, explain_label=None):
     """
     HLG Reference Opto-Optical Transfer Function (OOTF) as defined in ITU-R BT.2100-3 Table 5.
     
-    Maps scene-linear RGB to display-linear RGB with appropriate gamma adjustment.
-    The HLG OOTF applies the System Gamma to the luminance component only,
+    Maps scene linear RGB to display linear RGB with appropriate gamma adjustment.
+    The HLG OOTF applies the system gamma to the luminance component only,
     preserving consistent color appearance through the rendering chain.
     
     As specified in ITU-R BT.2390 Section 6.2:
@@ -406,14 +434,17 @@ def hlg_reference_ootf(r_s, g_s, b_s, gamma, alpha=1.0, explain_label=None):
     different luminance levels.
     
     Args:
-        r_s, g_s, b_s (float): Scene-linear RGB components [0:1]
+        r_s, g_s, b_s (float): Scene linear RGB components [0:1]
         gamma (float): System gamma calculated based on display and environment
-        alpha (float, optional): Display nominal peak luminance scaling factor.
-                                 Typically set to 1.0 for normalized calculations.
+        alpha (float, optional): User gain α in cd/m², which BT.2100-3 Table 5
+                                 defines as representing Lw, the nominal peak
+                                 luminance; the default 1.0 returns display
+                                 light normalized to the nominal peak
         explain_label (str, optional): Label for explanation output
     
     Returns:
-        tuple: Display-linear RGB components (r_d, g_d, b_d)
+        tuple: Display linear RGB components (r_d, g_d, b_d), in cd/m² when
+               alpha is Lw
     
     Reference: ITU-R BT.2100-3, Table 5, HLG Reference OOTF
     """
@@ -439,21 +470,21 @@ def hlg_reference_ootf(r_s, g_s, b_s, gamma, alpha=1.0, explain_label=None):
     if explain_label and r_s == g_s == b_s:
         # For achromatic signals (R=G=B), calculations are more straightforward
         # and easier to follow, making them ideal for educational purposes
-        L = r_s  # Scene linear light value (identical for all components)
+        E = r_s  # Scene linear light value (identical for all components)
         
         e_print(f"  For achromatic signal (R=G=B, {explain_label}):")
-        
+
         # Explain scene luminance calculation
-        e_print(f"    Scene luminance Y_S = {Y_R:.4f}*{r_s:.4f} + {Y_G:.4f}*{g_s:.4f} + {Y_B:.4f}*{b_s:.4f} = {Y_S:.4f}")
-        
+        e_print(f"    Scene luminance Y_S = {Y_R:.4f}*{format_precision(r_s)} + {Y_G:.4f}*{format_precision(g_s)} + {Y_B:.4f}*{format_precision(b_s)} = {format_precision(Y_S)}")
+
         # Show calculation of the luminance adjustment factor per ITU-R BT.2100-3 Table 5
-        e_print(f"    OOTF luminance adjustment factor = Y_S^(γ-1) = {Y_S:.4f}^{gamma - 1:.4f} = {ootf_factor:.4f}")
-        
+        e_print(f"    OOTF luminance adjustment factor = Y_S^(γ-1) = {format_precision(Y_S)}^{gamma - 1:.4f} = {format_precision(ootf_factor)}")
+
         # Demonstrate how the OOTF preserves the same adjustment across all three components
-        e_print(f"    Display light F_D = OOTF[L] = α × L × Y_S^(γ-1) = {alpha:.4f} × {L:.4f} × {ootf_factor:.4f} = {r_d:.4f}")
-        
+        e_print(f"    Display light F_D = OOTF[E] = α × E × Y_S^(γ-1) = {alpha:.2f} × {format_precision(E)} × {format_precision(ootf_factor)} = {format_precision(r_d)} cd/m²")
+
         # Show the mathematical simplification that occurs with achromatic signals
-        e_print(f"    Note: For achromatic signals, this simplifies to F_D = α × L^γ = {alpha:.4f} × {L:.4f}^{gamma:.4f} = {r_d:.4f}")
+        e_print(f"    Note: For achromatic signals, this simplifies to F_D = α × E^γ = {alpha:.2f} × {format_precision(E)}^{gamma:.4f} = {format_precision(r_d)} cd/m²")
     
     return r_d, g_d, b_d
 
@@ -461,7 +492,7 @@ def hlg_reference_ootf(r_s, g_s, b_s, gamma, alpha=1.0, explain_label=None):
 # Section 4: HLG Reference EOTF (using Inverse OETF + OOTF)
 #-----------------------------------------------------------------------------
 
-def hlg_reference_eotf(r_prime, g_prime, b_prime, gamma, L_W=None, L_B=0.0, beta=None, explain_label=None):
+def hlg_reference_eotf(r_prime, g_prime, b_prime, gamma, Lw, L_B=0.0, beta=None, explain_label=None):
     """
     Implements the full HLG Electro-Optical Transfer Function (EOTF) with OOTF 
     for RGB signals as specified in ITU-R BT.2100-3 Table 5, with optional
@@ -472,35 +503,35 @@ def hlg_reference_eotf(r_prime, g_prime, b_prime, gamma, L_W=None, L_B=0.0, beta
     2. Inverse OETF: Convert non-linear R', G', B' to scene linear R, G, B
     3. Apply OOTF: F_D = α·Y_S^(γ-1)·E, where:
        - Y_S is the scene luminance: 0.2627R + 0.6780G + 0.0593B
-       - γ is the variable System Gamma
-       - α is the display nominal peak luminance
+       - γ is the variable system gamma
+       - α is the user gain in cd/m², representing Lw, so F_D is the
+         display luminance in cd/m² (BT.2100-3 Table 5)
     
     The complete chain is expressed as: F_D = OOTF[OETF⁻¹[max(0,(1-β)E'+β)]]
     
     Args:
         r_prime, g_prime, b_prime (float): Non-linear HLG signal values [0:1+]
         gamma (float): System gamma calculated according to ITU-R BT.2100-3 Note 5f
-                       Typically in range 1.0-1.5, based on display peak luminance
-        L_W (float, optional): Nominal peak luminance of the display in cd/m²
-                              Required for black level lift calculation
+                       Typically in range 1.0-1.5, based on nominal peak luminance
+        Lw (float): Nominal peak luminance of the display in cd/m²; the
+                    OOTF's user gain α and the reference for black level lift
         L_B (float, optional): Display luminance for black in cd/m²
         beta (float, optional): Precalculated black level lift factor to reuse
-                               If None, will be calculated from L_B and L_W
+                               If None, will be calculated from L_B and Lw
         explain_label (str, optional): Label for explanation output
     
     Returns:
-        tuple: Normalized display light values (r_d, g_d, b_d)
-               Multiply by nominal peak luminance to get actual display luminance
+        tuple: Display luminance (r_d, g_d, b_d) in cd/m²
     
     Reference: ITU-R BT.2100-3, Table 5, "HLG Reference EOTF" definition.
     """
     # Step 1: Apply black level lift if required (L_B > 0)
-    black_level_enabled = (L_B > 0.0 and L_W is not None) or (beta is not None and beta > 0)
-    
+    black_level_enabled = L_B > 0.0 or (beta is not None and beta > 0)
+
     if black_level_enabled:
         # Use provided beta or calculate it
         if beta is None:
-            beta = calculate_black_level_lift(L_B, L_W, gamma)
+            beta = calculate_black_level_lift(L_B, Lw, gamma)
         
         # Apply black level lift to each component per BT.2100-3 formula:
         # F_D = EOTF[max(0,(1-β)E'+β)]
@@ -528,9 +559,8 @@ def hlg_reference_eotf(r_prime, g_prime, b_prime, gamma, L_W=None, L_B=0.0, beta
     g_s = hlg_inverse_oetf(g_lifted)  # Scene linear green
     b_s = hlg_inverse_oetf(b_lifted)  # Scene linear blue
     
-    # Step 3: Apply the OOTF to get display-referred light
-    # Using the separated OOTF function (α=1.0 for normalized values)
-    r_d, g_d, b_d = hlg_reference_ootf(r_s, g_s, b_s, gamma, alpha=1.0, explain_label=explain_label)
+    # Step 3: Apply the OOTF with α = Lw to get display luminance in cd/m²
+    r_d, g_d, b_d = hlg_reference_ootf(r_s, g_s, b_s, gamma, alpha=Lw, explain_label=explain_label)
     
     return r_d, g_d, b_d
 
@@ -547,8 +577,9 @@ def calculate_reference_white(Lw, gamma, L_B=0.0, beta=None, step_number=None):
     white card resulting in a nominal luminance of 203 cd/m² on a PQ display or 
     on an HLG display that has a nominal peak luminance capability of 1,000 cd/m²."
     
-    For a reference 1000 cd/m² display with standard gamma of 1.2, this function 
-    will return 203 cd/m², exactly matching the reference level in ITU-R BT.2408 Table 1.
+    For the 1000 cd/m² reference display with γ = 1.2 this function returns
+    203.15 cd/m², which rounds to the 203 cd/m² of ITU-R BT.2408 Table 1. The
+    75% signal is BT.2408's rounded nominal; 203 cd/m² exactly is 74.99%.
     
     With black level lift enabled, the function accounts for the modified
     signal mapping as specified in ITU-R BT.2100-3.
@@ -572,15 +603,12 @@ def calculate_reference_white(Lw, gamma, L_B=0.0, beta=None, step_number=None):
     
     e_print(f"  Input signal value: {signal_75:.2f} (75%)")
     
-    # Calculate normalized luminance using the HLG EOTF with black level lift if enabled
-    r_d, _, _ = hlg_reference_eotf(signal_75, signal_75, signal_75, gamma, 
-                         L_W=Lw, L_B=L_B, beta=beta, explain_label="75%")
-    L_normalized = r_d
+    # The EOTF returns display luminance in cd/m² (α = Lw), with black level
+    # lift applied if enabled
+    ref_white, _, _ = hlg_reference_eotf(signal_75, signal_75, signal_75, gamma,
+                                         Lw=Lw, L_B=L_B, beta=beta, explain_label="75%")
     
-    e_print(f"  Normalized luminance: {L_normalized:.6f}")
-    
-    ref_white = Lw * L_normalized
-    e_print(f"  Multiply by nominal peak: {Lw:.6f} × {L_normalized:.6f} = {ref_white:.6f} cd/m²")
+    e_print(f"  HDR Reference White luminance: {ref_white:.6f} cd/m²")
     
     return ref_white
 
@@ -590,7 +618,7 @@ def calculate_pluge_values(peak_luminance, surround_luminance, black_level=0.0):
     
     This function calculates the luminance values corresponding to the 10-bit and 12-bit
     code values specified in ITU-R BT.814 Table 3 for HDR displays. It uses the HLG EOTF
-    with System Gamma adapted to the viewing environment.
+    with system gamma adapted to the viewing environment.
     
     Args:
         peak_luminance (float): Nominal peak luminance of the display in cd/m².
@@ -603,7 +631,7 @@ def calculate_pluge_values(peak_luminance, surround_luminance, black_level=0.0):
             - 'black_level_display': Luminance of the Black level (code value 64/256)
             - 'slightly_lighter_level': Luminance of Slightly lighter level (code value 80/320)
             - 'slightly_darker_level': Luminance of Slightly darker level (code value 48/192)
-            - 'system_gamma': The calculated System Gamma
+            - 'system_gamma': The calculated system gamma
             - 'black_level_lift': The calculated black level lift factor (β)
             - 'input_black_level': Original black level input parameter
     """
@@ -619,9 +647,9 @@ def calculate_pluge_values(peak_luminance, surround_luminance, black_level=0.0):
     if EXPLAIN:
         e_print("\nPLUGE Test Signal Calculation:")
         e_print(f"{'-' * 75}")
-        e_print(f"Input Peak Luminance (Lw): {peak_luminance:.2f} cd/m²")
+        e_print(f"Input Nominal Peak Luminance (Lw): {peak_luminance:.2f} cd/m²")
         e_print(f"Input Surround Luminance (Ls): {surround_luminance:.2f} cd/m²")
-        e_print(f"Input Black Level (LB): {black_level:.4f} cd/m²")
+        e_print(f"Input Black Level (L_B): {black_level:.4f} cd/m²")
     
     # Step 1: Calculate System Gamma
     gamma, _ = calculate_system_gamma(peak_luminance, surround_luminance, step_number=1 if EXPLAIN else None)
@@ -655,7 +683,7 @@ def calculate_pluge_values(peak_luminance, surround_luminance, black_level=0.0):
     
     # Step 3: Convert code values to normalized signal values
     if EXPLAIN:
-        e_print(f"\nStep {3 if black_level <= 0 else 3}: Converting code values to normalized signal values")
+        e_print(f"\nStep {2 if black_level <= 0 else 3}: Converting code values to normalized signal values")
     
     # Calculate normalized values from 10-bit codes
     higher_level_normalized = (higher_level_code_10bit - black_10bit) / (peak_10bit - black_10bit)
@@ -687,77 +715,74 @@ def calculate_pluge_values(peak_luminance, surround_luminance, black_level=0.0):
         # Verify both normalizations match
         e_print(f"  Both 10-bit and 12-bit normalization should match: {higher_level_normalized:.4f} ≈ {higher_level_normalized_12bit:.4f}")
     
-    # Step 4: Calculate luminance values using the HLG EOTF
+    # Step 4: Calculate luminance values using the HLG EOTF (α = Lw, so the
+    # EOTF returns cd/m² directly)
     if EXPLAIN:
-        e_print(f"\nStep {4 if black_level <= 0 else 4}: Calculating PLUGE Level Luminances")
+        e_print(f"\nStep {3 if black_level <= 0 else 4}: Calculating PLUGE Level Luminances")
     
     # Calculate Higher level luminance (the reference 38.2% level)
     if EXPLAIN:
         e_print(f"  Higher level (code value 399/1596, normalized signal {higher_level_normalized:.3f}):")
-    r_d, _, _ = hlg_reference_eotf(
+    higher_level_luminance, _, _ = hlg_reference_eotf(
         higher_level_normalized, 
         higher_level_normalized, 
         higher_level_normalized, 
         gamma, 
-        L_W=peak_luminance, 
+        Lw=peak_luminance,
         L_B=black_level, 
         beta=beta,
         explain_label="Higher level" if EXPLAIN else None
     )
-    higher_level_luminance = peak_luminance * r_d
     if EXPLAIN:
-        e_print(f"  Higher level luminance = peak_luminance × normalized_value = {peak_luminance:.2f} × {r_d:.4f} = {higher_level_luminance:.2f} cd/m²")
+        e_print(f"  Higher level luminance: {higher_level_luminance:.2f} cd/m²")
     
     # Calculate Black level luminance
     if EXPLAIN:
         e_print(f"  Black level (code value 64/256, normalized signal {black_level_normalized:.3f}):")
-    r_d, _, _ = hlg_reference_eotf(
+    black_level_display_luminance, _, _ = hlg_reference_eotf(
         black_level_normalized, 
         black_level_normalized, 
         black_level_normalized, 
         gamma, 
-        L_W=peak_luminance, 
+        Lw=peak_luminance,
         L_B=black_level, 
         beta=beta,
         explain_label="Black level" if EXPLAIN else None
     )
-    black_level_display_luminance = peak_luminance * r_d
     if EXPLAIN:
-        e_print(f"  Black level luminance = peak_luminance × normalized_value = {peak_luminance:.2f} × {r_d:.4f} = {black_level_display_luminance:.4f} cd/m²")
+        e_print(f"  Black level luminance: {black_level_display_luminance:.4f} cd/m²")
     
     # Calculate Slightly lighter level luminance
     if EXPLAIN:
         e_print(f"  Slightly lighter level (code value 80/320, normalized signal {slightly_lighter_normalized:.3f}):")
-    r_d, _, _ = hlg_reference_eotf(
+    slightly_lighter_luminance, _, _ = hlg_reference_eotf(
         slightly_lighter_normalized, 
         slightly_lighter_normalized, 
         slightly_lighter_normalized, 
         gamma, 
-        L_W=peak_luminance, 
+        Lw=peak_luminance,
         L_B=black_level, 
         beta=beta,
         explain_label="Slightly lighter level" if EXPLAIN else None
     )
-    slightly_lighter_luminance = peak_luminance * r_d
     if EXPLAIN:
-        e_print(f"  Slightly lighter level luminance = peak_luminance × normalized_value = {peak_luminance:.2f} × {r_d:.4f} = {slightly_lighter_luminance:.4f} cd/m²")
+        e_print(f"  Slightly lighter level luminance: {slightly_lighter_luminance:.4f} cd/m²")
     
     # Calculate Slightly darker level luminance
     if EXPLAIN:
         e_print(f"  Slightly darker level (code value 48/192, normalized signal {slightly_darker_normalized:.2f}):")
-    r_d, _, _ = hlg_reference_eotf(
+    slightly_darker_luminance, _, _ = hlg_reference_eotf(
         slightly_darker_normalized, 
         slightly_darker_normalized, 
         slightly_darker_normalized, 
         gamma, 
-        L_W=peak_luminance, 
+        Lw=peak_luminance,
         L_B=black_level, 
         beta=beta,
         explain_label="Slightly darker level" if EXPLAIN else None
     )
-    slightly_darker_luminance = peak_luminance * r_d
     if EXPLAIN:
-        e_print(f"  Slightly darker level luminance = peak_luminance × normalized_value = {peak_luminance:.2f} × {r_d:.4f} = {slightly_darker_luminance:.4f} cd/m²")
+        e_print(f"  Slightly darker level luminance: {slightly_darker_luminance:.4f} cd/m²")
     
     if EXPLAIN:
         e_print(f"{'-' * 75}")
@@ -782,7 +807,7 @@ def nominal_range(peak_luminance, surround_luminance, black_level=0.0):
     Calculate standard parameters for an HLG display.
     
     This function calculates the essential parameters for an HLG display setup,
-    including System Gamma adaptation based on viewing environment, optional
+    including system gamma adaptation based on viewing environment, optional
     black level lift, and HDR Reference White level.
 
     Args:
@@ -793,7 +818,7 @@ def nominal_range(peak_luminance, surround_luminance, black_level=0.0):
     Returns:
         dict: A dictionary containing:
             - '100%_luminance' (float): Nominal 100% luminance.
-            - 'system_gamma' (float): Calculated System Gamma.
+            - 'system_gamma' (float): Calculated system gamma.
             - 'black_level' (float): Display luminance for black.
             - 'black_level_lift' (float): Calculated black level lift factor (β).
             - 'reference_white' (float): HDR Reference White in cd/m².
@@ -801,9 +826,9 @@ def nominal_range(peak_luminance, surround_luminance, black_level=0.0):
     """
     e_print("\nNominal Range Calculation Steps:")
     e_print(f"{'-' * 75}")
-    e_print(f"Input Peak Luminance (Lw): {peak_luminance:.2f} cd/m²")
+    e_print(f"Input Nominal Peak Luminance (Lw): {peak_luminance:.2f} cd/m²")
     e_print(f"Input Surround Luminance (Ls): {surround_luminance:.2f} cd/m²")
-    e_print(f"Input Black Level (LB): {black_level:.4f} cd/m²")
+    e_print(f"Input Black Level (L_B): {black_level:.4f} cd/m²")
 
     # Step 1: Calculate System Gamma using the shared function with step number
     gamma, _ = calculate_system_gamma(peak_luminance, surround_luminance, step_number=1)
@@ -833,63 +858,73 @@ def nominal_range(peak_luminance, surround_luminance, black_level=0.0):
         'surround_luminance': surround_luminance
     }
 
-def extended_range(peak_luminance, surround_luminance, black_level=0.0):
+def extended_range(peak_luminance, surround_luminance, black_level=0.0,
+                   nominal_is_calculated=False, first_step=1):
     """
     Calculate extended range parameters for an HLG display, showing the brightness
     at 109% signal level (super-white) for a given nominal 100% luminance.
-    
+
     This function provides detailed calculation steps to show how HLG handles signals
     beyond the nominal range, with optional support for black level lift.
-    
+
     Args:
         peak_luminance (float): Nominal peak luminance of the display in cd/m²
         surround_luminance (float): Luminance of the display surround in cd/m²
         black_level (float, optional): Display luminance for black in cd/m²
-        
+        nominal_is_calculated (bool, optional): When True, the explanation
+            header labels the nominal peak luminance as calculated rather
+            than as an input (used by extended_peak_range(), where Lw is
+            solved, not given). The calculations are unaffected.
+        first_step (int, optional): Number of the first explanation step.
+            extended_peak_range() passes 2 so its step numbering continues
+            past the solver's Step 1 instead of restarting.
+
     Returns:
         dict: A dictionary containing:
             - '100%_luminance' (float): Nominal 100% luminance.
             - '109%_luminance' (float): Calculated extended luminance at 109% signal.
-            - 'system_gamma' (float): Calculated System Gamma.
+            - 'system_gamma' (float): Calculated system gamma.
             - 'black_level' (float): Display luminance for black.
             - 'black_level_lift' (float): Calculated black level lift factor (β).
             - 'reference_white' (float): HDR Reference White in cd/m².
     """
-    e_print("\nExtended Range Calculation Steps:")
-    e_print(f"{'-' * 75}")
-    e_print(f"Input Peak Luminance (Lw): {peak_luminance:.2f} cd/m²")
+    if nominal_is_calculated:
+        e_print("\nExtended Range Calculation Steps (from the calculated nominal peak):")
+        e_print(f"{'-' * 75}")
+        e_print(f"Calculated Nominal Peak Luminance (Lw): {peak_luminance:.2f} cd/m²")
+    else:
+        e_print("\nExtended Range Calculation Steps:")
+        e_print(f"{'-' * 75}")
+        e_print(f"Input Nominal Peak Luminance (Lw): {peak_luminance:.2f} cd/m²")
     e_print(f"Input Surround Luminance (Ls): {surround_luminance:.2f} cd/m²")
-    e_print(f"Input Black Level (LB): {black_level:.4f} cd/m²")
+    e_print(f"Input Black Level (L_B): {black_level:.4f} cd/m²")
     
     # Step 1: Calculate System Gamma using the shared function with step number
-    gamma, _ = calculate_system_gamma(peak_luminance, surround_luminance, step_number=1)
-    
+    gamma, _ = calculate_system_gamma(peak_luminance, surround_luminance, step_number=first_step)
+
     # Step 2: Calculate Black Level Lift (if enabled)
     beta = 0.0
     step_offset = 0
     if black_level > 0.0:
-        beta = calculate_black_level_lift(black_level, peak_luminance, gamma, step_number=2)
+        beta = calculate_black_level_lift(black_level, peak_luminance, gamma, step_number=first_step + 1)
         step_offset = 1
-    
+
     # Step 3: Calculate 109% signal luminance
-    e_print(f"\nStep {2 + step_offset}: Calculating 109% signal luminance")
-    E = EXTENDED_RANGE_109
+    e_print(f"\nStep {first_step + 1 + step_offset}: Calculating 109% signal luminance")
+    E = SIGNAL_LEVEL_109
     e_print(f"  Input signal value: {E:.15f} (109%)")
     
-    # Calculate normalized luminance using HLG EOTF with black level lift if enabled
-    r_d, _, _ = hlg_reference_eotf(E, E, E, gamma, L_W=peak_luminance, L_B=black_level, 
-                       beta=beta, explain_label="109%")
-    L_normalized = r_d
+    # The EOTF returns display luminance in cd/m² (α = Lw), with black level
+    # lift applied if enabled
+    luminance_109, _, _ = hlg_reference_eotf(E, E, E, gamma, Lw=peak_luminance,
+                                             L_B=black_level, beta=beta,
+                                             explain_label="109%")
     
-    e_print(f"  Normalized luminance: {L_normalized:.6f}")
-    
-    # Calculate luminance value
-    luminance_109 = peak_luminance * L_normalized
-    e_print(f"  Multiply by nominal peak: {peak_luminance:.6f} × {L_normalized:.6f} = {luminance_109:.6f} cd/m²")
+    e_print(f"  109% signal luminance: {luminance_109:.6f} cd/m²")
     
     # Step 4: Calculate HDR Reference White using the helper function with step number
-    ref_white = calculate_reference_white(peak_luminance, gamma, L_B=black_level, 
-                                        beta=beta, step_number=3 + step_offset)
+    ref_white = calculate_reference_white(peak_luminance, gamma, L_B=black_level,
+                                        beta=beta, step_number=first_step + 2 + step_offset)
     
     e_print(f"{'-' * 75}")
     
@@ -903,16 +938,156 @@ def extended_range(peak_luminance, surround_luminance, black_level=0.0):
         'surround_luminance': surround_luminance
     }
 
+def extended_peak_range(extended_peak, surround_luminance, black_level=0.0):
+    """
+    Solve for the nominal peak luminance (Lw) whose full extended signal range
+    (0-109%) fits within a given Extended Peak Luminance, then calculate the
+    extended range parameters for that nominal peak.
+
+    The Extended Peak Luminance is the luminance the 109% super-white signal
+    level is mapped to. Lowering the effective nominal peak so that the
+    extended range fits within the display capability is the "contrast
+    control" adjustment described in ITU-R BT.2100-3 Note 5f.
+
+    An iterative solver is needed because the relationship between the
+    nominal peak luminance and the luminance at 109% cannot be expressed as
+    a direct formula, due to:
+
+    1. System gamma depends on the nominal peak luminance (BT.2100-3 Note 5f)
+    2. The EOTF output at 109% depends on the system gamma
+    3. The luminance at 109% is the product of nominal peak and EOTF output
+
+    Note 5f's switch between its two gamma formulas makes γ(Lw) discontinuous
+    at 400 and 2000 cd/m², so a small window of Extended Peak Luminance
+    values (≈3855-3869 cd/m² at reference surround and zero black level)
+    has no exact solution and another (≈667-671 cd/m²) has two. Bisection
+    relies only on the 109% luminance increasing with Lw within each branch
+    and converges to the largest Lw that fits; a second pass from the
+    Lw = 400 boundary covers the two-solution window, preferring the larger
+    solution so that a nominal peak configuration round-trips through this
+    mode.
+
+    Args:
+        extended_peak (float): Extended Peak Luminance in cd/m² — the
+                               luminance the 109% signal level is mapped to.
+        surround_luminance (float): Luminance of the display surround in cd/m².
+        black_level (float, optional): Display luminance for black in cd/m².
+
+    Returns:
+        dict: The extended_range() result dictionary for the solved nominal
+              peak luminance. '109%_luminance' is the actual 109% luminance
+              of the solved nominal peak; within the no-solution window it
+              is slightly below the requested Extended Peak Luminance.
+
+    Reference: ITU-R BT.2100-3 Note 5f (contrast control clause) and
+               ITU-R BT.2390-12 Section 6.2.
+    """
+    if extended_peak <= 0:
+        raise ValueError("Extended Peak Luminance must be positive")
+
+    e_print("\nExtended Peak Calculation Steps:")
+    e_print(f"{'-' * 75}")
+    e_print(f"Input Extended Peak Luminance: {extended_peak:.2f} cd/m²")
+    e_print(f"Input Surround Luminance (Ls): {surround_luminance:.2f} cd/m²")
+    e_print(f"Input Black Level (L_B): {black_level:.4f} cd/m²")
+
+    def compute_peak_109(lw):
+        # Only the 109% luminance is needed inside the solver loop; without
+        # step_number/explain_label the shared helpers print nothing.
+        gamma, _ = calculate_system_gamma(lw, surround_luminance)
+        beta = 0.0
+        if black_level > 0.0:
+            beta = calculate_black_level_lift(black_level, lw, gamma)
+        E = SIGNAL_LEVEL_109
+        peak_109, _, _ = hlg_reference_eotf(E, E, E, gamma, Lw=lw,
+                                            L_B=black_level, beta=beta)
+        return peak_109
+
+    # One shared iteration limit across both bisection passes
+    iterations = 0
+
+    def largest_fitting_lw(lo, hi):
+        # Rows are collected instead of printed so that, once the pass is
+        # known to produce the final result, the row whose midpoint becomes
+        # the solved Lw (the last fitting one) can be tagged "(best fit)"
+        nonlocal iterations
+        rows = []
+        last_fit_index = None
+        while (hi - lo) / hi > 1e-7 and iterations < 100:
+            iterations += 1
+            mid = (lo + hi) / 2
+            peak_109_mid = compute_peak_109(mid)
+            fits = peak_109_mid <= extended_peak
+            # Six decimals on the 109% column so the fits/does-not-fit verdicts
+            # near convergence stay distinguishable from the target value
+            rows.append(f"{iterations:>10} {lo:12.4f} {hi:12.4f} {mid:12.4f} {peak_109_mid:16.6f} {'yes' if fits else 'no':>6}")
+            if fits:
+                last_fit_index = len(rows) - 1
+                lo = mid
+            else:
+                hi = mid
+        return lo, rows, last_fit_index
+
+    def print_table(rows, last_fit_index, is_final_pass):
+        e_print(f"{'Iteration':>10} {'Low Lw':>12} {'High Lw':>12} {'Mid Lw':>12} {'109% at mid':>16} {'Fits':>6}")
+        e_print(f"{'-'*10:>10} {'-'*12:>12} {'-'*12:>12} {'-'*12:>12} {'-'*16:>16} {'-'*6:>6}")
+        for index, row in enumerate(rows):
+            if is_final_pass and index == last_fit_index:
+                e_print(row + " (best fit)")
+            else:
+                e_print(row)
+
+    # EOTF[1.0902] ratio is > 1 and < 3 for any reachable gamma, so the
+    # solution always lies between extended_peak / 3 and extended_peak.
+    e_print(f"\nStep 1: Bisection for the largest nominal peak luminance (Lw) that fits")
+    e_print(f"  An iterative search is needed: the system gamma depends on Lw (BT.2100-3")
+    e_print(f"  Note 5f), and the 109% luminance depends on both, so the relationship")
+    e_print(f"  cannot be inverted directly.")
+    e_print(f"  Searching for the largest Lw whose 109% signal luminance does not exceed")
+    e_print(f"  the Extended Peak Luminance of {extended_peak:.2f} cd/m²")
+    e_print(f"  Initial bracket: [{extended_peak / 3:.4f}, {extended_peak:.4f}] cd/m²")
+    e_print(f"  (the 109% luminance is greater than Lw and less than 3 × Lw for any")
+    e_print(f"  reachable gamma, so the solution must lie in this bracket)")
+    lw, rows, last_fit_index = largest_fitting_lw(extended_peak / 3, extended_peak)
+
+    # γ steps down across Lw = 400 (Note 5f formula switch), so a fitting Lw
+    # just below 400 can coexist with a larger one at or above it; prefer
+    # the larger so mode swaps round-trip.
+    ran_second_pass = lw < 400 and compute_peak_109(400) <= extended_peak
+    print_table(rows, last_fit_index, is_final_pass=not ran_second_pass)
+    if ran_second_pass:
+        e_print(f"\n  Note: The switch between the two BT.2100-3 Note 5f gamma formulas at")
+        e_print(f"  Lw = 400 cd/m² makes γ(Lw) discontinuous, admitting a second, larger")
+        e_print(f"  solution at or above 400 cd/m². Rerunning the bisection over")
+        e_print(f"  [400, {extended_peak:.4f}] cd/m² to return the larger solution, so that")
+        e_print(f"  a nominal peak configuration round-trips through this mode:")
+        lw, rows, last_fit_index = largest_fitting_lw(400, extended_peak)
+        print_table(rows, last_fit_index, is_final_pass=True)
+
+    e_print(f"\n  Convergence criterion: relative bracket width (High - Low) / High < 1e-7")
+    if ran_second_pass:
+        e_print(f"  Iterations used: {iterations} (limit: 100, shared across both bisection passes)")
+    else:
+        e_print(f"  Iterations used: {iterations} (limit: 100)")
+    e_print(f"  Solved nominal peak luminance (Lw): {lw:.4f} cd/m²")
+
+    return extended_range(lw, surround_luminance, black_level,
+                          nominal_is_calculated=True, first_step=2)
+
 def main():
     """
     Main function that handles command-line arguments and runs the appropriate calculation mode.
 
     Calculation Modes:
-        nominal  : Calculates System Gamma and HDR Reference White for a standard display setup
-        extended : Calculates nominal luminance of 100% and the extended 109% luminance value
+        nominal      : Calculates system gamma and HDR Reference White for a standard display setup
+        extended     : Calculates nominal luminance of 100% and the extended 109% luminance value
+        extendedpeak : Calculates the nominal peak luminance so the full extended range (0-109%)
+                       fits within --peak; lowering the effective nominal peak this way is the
+                       ITU-R BT.2100-3 Note 5f contrast-control adjustment
 
     Required Parameters:
-        --peak      : Display peak luminance in cd/m² (default: 1000)
+        --peak      : Nominal peak luminance in cd/m² (default: 1000);
+                      in extendedpeak mode, the Extended Peak Luminance
         --surround  : Surround luminance in cd/m² (default: 5)
         --mode      : Calculation mode (default: nominal)
 
@@ -926,24 +1101,46 @@ def main():
         python3 hlg_calculator.py --peak 1000 --surround 5 --pluge --explain
         python3 hlg_calculator.py --peak 1000 --surround 5 --black 0.005 --pluge --mode nominal --explain
         python3 hlg_calculator.py --peak 1000 --surround 5 --mode extended --explain
+        python3 hlg_calculator.py --peak 2000 --surround 5 --mode extendedpeak --explain
     """
-    # Command-line argument parser setup
-    parser = argparse.ArgumentParser(description="HLG Display Adaptation Calculator")
+    # Command-line argument parser setup. The epilog reuses the module
+    # docstring's "Usage examples:" section, so --help shows worked examples
+    # and the two cannot drift apart. RawDescriptionHelpFormatter keeps the
+    # examples' line breaks instead of re-wrapping them into a paragraph.
+    examples = __doc__[__doc__.index("Usage examples:"):__doc__.index("\nReferences:")].rstrip()
+    parser = argparse.ArgumentParser(description="HLG Display Adaptation Calculator",
+                                     epilog=examples,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
 
     parser.add_argument('--peak', type=float, default=1000.0,
-                        help="Peak luminance in cd/m² (default: 1000)")
+                        help="Nominal peak luminance in cd/m² (default: 1000); "
+                             "in extendedpeak mode, the Extended Peak Luminance "
+                             "(the luminance the 109%% signal is mapped to)")
     parser.add_argument('--surround', type=float, default=5.0,
                         help="Surround luminance in cd/m² (default: 5)")
     parser.add_argument('--black', nargs='?', const=0.005, type=float, default=0.0,
                         help="Enable black level lift with specified value in cd/m² (default when flag used: 0.005)")
     parser.add_argument('--pluge', action='store_true',
                         help="Calculate PLUGE test signal values according to ITU-R BT.814")
-    parser.add_argument('--mode', choices=['nominal', 'extended'],
-                        default='nominal', help="Gamma calculation mode (default: nominal)")
+    parser.add_argument('--mode', choices=['nominal', 'extended', 'extendedpeak'],
+                        default='nominal',
+                        help="Calculation mode (default: nominal); extendedpeak calculates "
+                             "the nominal peak luminance so the full extended range (0-109%%) "
+                             "fits within --peak (the BT.2100-3 Note 5f contrast-control "
+                             "adjustment)")
     parser.add_argument('--explain', action='store_true',
                         help="Show detailed explanations of calculation steps")
 
     args = parser.parse_args()
+
+    # Validate the luminance inputs up front so every mode fails the same
+    # way, with a usage error instead of a math-domain traceback
+    if args.peak <= 0:
+        parser.error("--peak must be a positive number")
+    if args.surround <= 0:
+        parser.error("--surround must be a positive number")
+    if args.black < 0:
+        parser.error("--black must be zero or a positive number")
 
     # Set explanation mode based on command-line flag
     global EXPLAIN
@@ -977,9 +1174,40 @@ def main():
         print(f"  System gamma:              {result['system_gamma']:.2f}")
         print(f"  HDR Reference White (75%): {result['reference_white']:.0f} cd/m²\n")
 
+    elif args.mode == 'extendedpeak':
+        # Solve the nominal 100% luminance so the full extended range (0-109%)
+        # fits within the given Extended Peak Luminance
+        result = extended_peak_range(args.peak, args.surround, args.black)
+
+        print("\nExtended Peak Calculation:")
+        print(f"  Nominal 100% luminance:    {result['100%_luminance']:.0f} cd/m² (calculated)")
+        print(f"  Extended 109% luminance:   {result['109%_luminance']:.0f} cd/m²")
+        print(f"  Surround luminance:        {result['surround_luminance']:.0f} cd/m²")
+        if args.black > 0.0:
+            print(f"  Black level luminance:     {result['black_level']:.4f} cd/m²")
+            print(f"  Black level lift (β):      {result['black_level_lift']:.4f}")
+        print(f"  System gamma:              {result['system_gamma']:.2f}")
+        print(f"  HDR Reference White (75%): {result['reference_white']:.0f} cd/m²\n")
+
+        # The Note 5f gamma-formula switch at Lw = 2000 makes a narrow window
+        # of extended peak values unreachable; say so instead of silently
+        # returning a 109% luminance that differs from the request
+        if abs(result['109%_luminance'] - args.peak) / args.peak > 1e-5:
+            print(f"  Note: No nominal peak luminance maps the 109% signal exactly to")
+            print(f"        {args.peak:g} cd/m² — the switch between the two gamma formulas")
+            print(f"        in BT.2100-3 Note 5f leaves a small gap of unreachable")
+            print(f"        extended peak values. The closest fitting configuration is")
+            print(f"        shown.\n")
+
     # Calculate PLUGE values if the pluge argument is used
     if args.pluge:
-        pluge_result = calculate_pluge_values(args.peak, args.surround, args.black)
+        # In extendedpeak mode --peak is the Extended Peak Luminance; PLUGE
+        # levels must be computed from the solved nominal peak luminance
+        if args.mode == 'extendedpeak':
+            pluge_peak = result['100%_luminance']
+        else:
+            pluge_peak = args.peak
+        pluge_result = calculate_pluge_values(pluge_peak, args.surround, args.black)
 
         # Print PLUGE results
         print("\nPLUGE Test Signal Luminance Values (10-bit/12-bit)")

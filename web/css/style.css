@@ -1,0 +1,1657 @@
+/*
+Copyright 2026 Thomas Berglund (NRK)
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/* GLOBAL VARIABLES */
+:root {
+    /* Colors */
+    --color-primary: #008000;
+    --color-primary-hover: oklch(90% 0.1 140);
+    --color-primary-active: oklch(50% 0.3 140);
+    --color-secondary: #0080db;
+    --color-primary-soft: color-mix(in srgb, var(--color-primary) 12%, var(--color-bg));
+    --color-secondary-soft: color-mix(in srgb, var(--color-secondary) 12%, var(--color-bg));
+    --color-text: #222;
+    --color-text-muted: #444;
+    --color-border: #ddd;
+    --color-bg: #fff;
+    --color-bg-subtle: #f4f4f4;
+    --color-code-bg: #cef;
+    --color-track: #999;
+
+    /* EBU R 103 Figure 1's signal levels, shared by the EOTF view's
+       bands and the range pill on its legend */
+    --r103-nominal: #e7f3e7;
+    --r103-headroom: #fdf5d8;
+    --r103-novideo: #e08a8a;
+
+    /* Curve colours shared with the marks that read off them: the
+       reference display's dot and readout swatch, the log segment's
+       super-white extension */
+    --color-reference-display: #767676;
+    --color-oetf-log: #d2691e;
+
+    /* Spacing */
+    --space-xs: 0.25rem;
+    --space-sm: 0.5rem;
+    --space-md: 1rem;
+    --space-lg: 1.5rem;
+    --space-xl: 2rem;
+
+    /* Borders & Shapes */
+    --radius-sm: 5px;
+    --radius-md: 0.75ch;
+    --radius-lg: 1rem;
+    --radius-full: 50%;
+
+    /* Typography */
+    --line-height: 1.6;
+    --font-size-sm: 1em;
+    --font-size-md: 1.1em;
+    --font-size-lg: 1.2em;
+
+    /* Layout */
+    --container-width: 64rem;
+    --transition: 0.2s ease;
+}
+
+/* RESET & BASE STYLES
+   Basic styling and normalization */
+html {
+    box-sizing: border-box;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: inherit;
+}
+
+body {
+    font-family: system-ui, -apple-system, sans-serif;
+    line-height: var(--line-height);
+    margin: 0;
+    color: var(--color-text);
+    padding-block: 1lh 2lh;
+}
+
+/* TYPOGRAPHY
+   Text styling for various elements */
+h1,
+h2,
+h3,
+h4,
+h5 {
+    margin-block: 1lh 0;
+}
+
+h1,
+h2 {
+    margin-top: 0;
+}
+
+h1 {
+    margin-block-end: 0.5lh;
+    text-align: center;
+    font-size: 1.5em;
+}
+
+label {
+    display: block;
+    font-weight: bold;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-md);
+    overflow: hidden;
+}
+
+/* A second line under a label, for what qualifies the quantity
+   rather than names it — the signal level a peak luminance is the
+   luminance of. Lighter and smaller than the heading, so the two
+   read as heading and sub-heading rather than as one sentence that
+   happens to wrap, which is what they did on a phone */
+.label-note {
+    display: block;
+    font-weight: normal;
+    font-size: 0.85em;
+}
+
+ul {
+    margin-block-start: 0.125lh;
+}
+
+li+li {
+    margin-top: var(--space-xs);
+}
+
+pre,
+code {
+    background: var(--color-code-bg);
+    border-radius: var(--radius-sm);
+    font-size: 110%;
+}
+
+pre {
+    padding: 0.125em 0.375em;
+    white-space: pre-wrap;
+}
+
+code {
+    padding: 0.25em 0.5em;
+    font-weight: 500;
+}
+
+/* LAYOUT
+   Container and structural elements */
+.container {
+    width: min(100%, var(--container-width));
+    margin-inline: auto;
+    padding: var(--space-lg) var(--space-xl);
+    border-radius: var(--radius-lg);
+}
+
+/* COMPONENT: EPIGRAPH */
+.documentation blockquote.epigraph {
+    margin: var(--space-md) 0 var(--space-lg);
+    padding: var(--space-sm) var(--space-md);
+    border-left: 4px solid var(--color-primary);
+    font-size: var(--font-size-md);
+    font-style: italic;
+    color: var(--color-text);
+}
+
+.documentation blockquote.epigraph footer {
+    margin-top: var(--space-xs);
+    font-size: 0.85em;
+    font-style: normal;
+    color: var(--color-text-muted);
+}
+
+.documentation .container {
+    background-color: var(--color-bg-subtle);
+}
+
+/* FORM ELEMENTS
+   Inputs, buttons, and controls */
+input,
+button {
+    font-family: inherit;
+    font-size: inherit;
+}
+
+/* Range sliders */
+input[type=range] {
+    width: 100%;
+    margin: 1lh 0 2lh;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background: transparent;
+    touch-action: manipulation;
+}
+
+/* Slider track */
+input[type="range"]::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 12px;
+    background: var(--color-track);
+    border-radius: 6px;
+}
+
+input[type="range"]::-moz-range-track {
+    width: 100%;
+    height: 12px;
+    background: var(--color-track);
+    border-radius: 6px;
+}
+
+/* Slider thumb */
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 36px;
+    height: 36px;
+    background: var(--color-primary);
+    border-radius: var(--radius-full);
+    border: 3px solid var(--color-bg);
+    cursor: pointer;
+    /* Centre the thumb on the track: half the track's height less half
+       the thumb's, which border-box counts to the outside of its
+       border. Every thumb size below sets its own */
+    margin-top: -12px;
+    box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+input[type="range"]::-moz-range-thumb {
+    width: 36px;
+    height: 36px;
+    background: var(--color-primary);
+    border-radius: var(--radius-full);
+    border: 3px solid var(--color-bg);
+    cursor: pointer;
+    box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+/* The WebKit and Mozilla thumbs are separate rules throughout: a
+   selector list with a pseudo-element the browser does not know is
+   dropped whole, and each engine knows only its own */
+input[type="range"]:hover::-webkit-slider-thumb {
+    transform: scale(1.05);
+}
+
+input[type="range"]:hover::-moz-range-thumb {
+    transform: scale(1.05);
+}
+
+input[type="number"] {
+    width: 6em;
+    padding: var(--space-xs) var(--space-sm);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg);
+    color: var(--color-text);
+    text-align: right;
+    margin-left: var(--space-sm);
+    float: right;
+
+    /* Tabular figures for consistent spacing */
+    font-feature-settings: "tnum";
+
+    transition: border-color var(--transition), 
+                box-shadow var(--transition);
+}
+
+input[type="number"]:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px var(--color-primary-hover);
+}
+
+input[type="number"]:hover {
+    border-color: var(--color-primary);
+}
+
+/* BUTTONS
+   All button styles */
+.preset-buttons button,
+.toggle-button-group button,
+.toggle-switch button,
+.peak-mode-buttons button {
+    padding: 0.5em 0.75em;
+    border: 1px solid var(--color-primary);
+    background: var(--color-bg-subtle);
+    cursor: pointer;
+    border-radius: var(--radius-md);
+    color: var(--color-text-muted);
+    transition: background-color var(--transition),
+        color var(--transition);
+}
+
+/* The presets are the values the sliders are set from and the most
+   pressed of the button groups, so they take the largest type: a step
+   above the mode toggles, not enough to outweigh them. The phone rules
+   below step them down further */
+.preset-buttons button {
+    font-size: 110%;
+}
+
+.preset-buttons button:hover,
+.toggle-button-group button:hover,
+.toggle-switch button:hover,
+.peak-mode-buttons button:hover {
+    background: var(--color-primary-hover);
+    color: #004000;
+}
+
+.preset-buttons button.active,
+.toggle-button-group button.active,
+.toggle-switch button.active,
+.peak-mode-buttons button.active {
+    background: var(--color-primary-active);
+    border-color: #000;
+    color: white;
+}
+
+/* Button containers */
+.preset-buttons,
+.extended-range-toggle {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+}
+
+.toggle-button-group,
+.toggle-switch {
+    display: flex;
+    gap: 8px;
+    margin-bottom: var(--space-lg);
+    justify-content: center;
+}
+
+/* Wraps the black level toggle switch */
+.black-level-toggle {
+    text-align: center;
+    margin-bottom: var(--space-lg);
+}
+
+/* COMPONENT: EXTENDED RANGE NOTE
+   An aside set off by the accent rule: what enabling Extended Range
+   does (and does not) change */
+.extended-range-note {
+    margin-top: var(--space-lg);
+    margin-bottom: var(--space-lg);
+    padding: var(--space-md) var(--space-lg);
+    background: var(--color-bg-subtle);
+    border-left: 4px solid var(--color-primary);
+    border-radius: var(--radius-sm);
+}
+
+.extended-range-note p {
+    margin: 0;
+}
+
+.extended-range-note p + p {
+    margin-top: var(--space-md);
+}
+
+.extended-range-note blockquote {
+    margin: var(--space-md) 0 0;
+    font-style: italic;
+    color: var(--color-text-muted);
+}
+
+.extended-range-note blockquote footer {
+    margin-top: var(--space-xs);
+    font-style: normal;
+}
+
+.extended-range-note .formula-container {
+    display: block;
+    text-align: center;
+    margin: var(--space-sm) 0;
+}
+
+/* COMPONENT: NOMINAL/EXTENDED PEAK TOGGLE
+   Lets the user choose which peak the slider sets: the nominal peak
+   (100% signal) or the extended peak (109% signal). Only shown
+   in Extended Range mode, where the two peak modes diverge. */
+.peak-nominal-or-extended-toggle {
+    display: none;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin-bottom: var(--space-md);
+}
+
+.peak-nominal-or-extended-toggle .toggle-switch {
+    margin-bottom: 0;
+}
+
+/* On phones every toggle label is long enough to wrap onto a second
+   line at the full size, doubling the height of each row of buttons
+   where the screen is scarcest. The type shrinks with the viewport
+   so the labels stay on one line down to the narrowest common phone
+   widths, and the rows tighten with it */
+@media (max-width: 600px) {
+    .toggle-button-group,
+    .toggle-switch {
+        gap: 6px;
+        margin-bottom: var(--space-md);
+    }
+
+    .toggle-button-group button,
+    .toggle-switch button {
+        font-size: clamp(0.7em, 3.2vw, 0.85em);
+        padding: 0.35em 0.45em;
+    }
+}
+
+/* COMPONENT: EXTENDED RANGE DETAILS
+   Collapsible explanation under the toggles. The always-visible summary
+   line carries the one-line lesson for the current peak mode;
+   expanding it reveals the full note with the standards quote. */
+.extended-range-details {
+    display: none;
+    margin-bottom: var(--space-lg);
+}
+
+.extended-range-details summary {
+    cursor: pointer;
+    text-align: center;
+    color: var(--color-text-muted);
+}
+
+.extended-range-details summary:hover {
+    color: var(--color-text);
+}
+
+/* COMPONENT: SLIDERS
+   Slider containers and controls */
+.slider-container {
+    margin-bottom: 1.6lh;
+}
+
+/* The value box floats to the label's right; the reset follows it into
+   the same float, landing at the box's left. Later in the source, so
+   the box keeps the row's right end */
+.slider-container .reset-button {
+    float: right;
+    margin-left: var(--space-sm);
+}
+
+/* COMPONENT: OUTPUT TABLE
+   Table displaying calculation results */
+.output-table {
+    width: 100%;
+    margin-bottom: 1.6lh;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.output-table th,
+.output-table td {
+    border: 1px solid var(--color-border);
+    padding: 12px;
+    text-align: left;
+}
+
+.output-table th {
+    background: var(--color-bg-subtle);
+    font-weight: normal;
+    text-align: right;
+    padding-right: 15px;
+    width: 50%;
+}
+
+.output-table td {
+    font-feature-settings: "tnum";
+    /* Tabular figures for better alignment */
+}
+
+.output-value-slider,
+.output-value-calculated {
+    font-weight: bold;
+    font-size: var(--font-size-lg);
+    text-align: left;
+    padding-left: 15px;
+}
+
+.output-value-slider {
+    color: var(--color-primary);
+}
+
+.output-value-calculated {
+    color: var(--color-secondary);
+}
+
+/* COMPONENT: VALUE PILLS
+   A pill tags the value it follows: in the results table and on the
+   graph anchor line with the value's role, in a graph legend with a
+   condition its curve is drawn under. One shape and size for both;
+   the fill says which kind of tag it is */
+.role-pill,
+.graph-legend .legend-mode {
+    display: inline-block;
+    padding: 0.15em 0.8em;
+    border-radius: var(--radius-lg);
+    font-size: 0.9em;
+}
+
+.role-pill {
+    margin-left: var(--space-md);
+}
+
+.role-input {
+    background: var(--color-primary-soft);
+    color: var(--color-primary);
+}
+
+.role-calculated {
+    background: var(--color-secondary-soft);
+    color: var(--color-secondary);
+}
+
+/* A legend's mode reads as a tag on the curve rather than as another
+   of the conditions in the parenthesis. Neutral, so it is not taken
+   for an input/calculated role; it sits outside .legend-detail, so
+   narrow layouts keep it */
+.graph-legend .legend-mode {
+    margin-left: var(--space-sm);
+    color: var(--color-text-muted);
+    white-space: nowrap;
+}
+
+/* Nominal Range takes the nominal video range's green; Extended Range
+   takes the headroom's yellow, the band it brings into play */
+.graph-legend .legend-mode-nominal {
+    background: var(--r103-nominal);
+}
+
+.graph-legend .legend-mode-extended {
+    background: var(--r103-headroom);
+}
+
+/* COMPONENT: FORMULAS
+   Mathematical formula display */
+.live-formulas {
+    text-align: center;
+}
+
+.live-formula-heading {
+    font-size: var(--font-size-lg);
+    margin-bottom: var(--space-md);
+}
+
+.formula-container {
+    display: inline-block;
+    text-align: left;
+}
+
+.live-formulas .formula-container {
+    display: block;
+    text-align: center;
+    font-size: var(--font-size-lg);
+    margin-top: var(--space-md);
+    margin-bottom: var(--space-xl);
+    /* KaTeX can only wrap between top-level chunks; a chunk wider
+       than the viewport scrolls instead of clipping. overflow-y is
+       pinned (auto on one axis makes the other scrollable too) and
+       the vertical padding absorbs KaTeX's slight line-box overhang
+       so no vertical scrollbar appears */
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: var(--space-xs) var(--space-sm);
+    box-sizing: border-box;
+}
+
+/* The documentation's standalone formulas (the divs; the spans are
+   inline maths within prose and list items) scroll like the live
+   ones rather than reaching past the viewport. As there, the
+   padding absorbs KaTeX's slight line-box overhang, which would
+   otherwise put a scrollbar under formulas that fit */
+.documentation div.formula-container {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: var(--space-xs) var(--space-sm);
+}
+
+p .formula-container {
+    display: inline;
+}
+
+/* COMPONENT: GRAPH PANEL
+   The block diagram and the graph views under it; colour follows
+   the output table: blue current display, grey reference. */
+.graph-panel {
+    margin-bottom: 1.6lh;
+}
+
+/* Names the panel above its block diagram and view buttons, so
+   neither is read as belonging to the formula section above.
+   Centred and sized like the live-formula headings to keep the
+   page rhythm */
+.graph-panel-heading {
+    font-size: var(--font-size-lg);
+    text-align: center;
+    margin-bottom: var(--space-md);
+}
+
+/* COMPONENT: SIGNAL CHAIN STRIP
+   The block diagram above the graph views; content documented at
+   the markup. One column until the page can hold the chain in a
+   line, which the row layout below waits for. Shape carries what
+   colour would:
+   colour here means current display (blue), active view (green). */
+.chain-strip {
+    display: grid;
+    grid-template-areas:
+        "scene"
+        "arrow-in"
+        "camera"
+        "signal"
+        "display"
+        "arrow-out"
+        "light";
+    justify-items: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
+    font-size: 0.85em;
+}
+
+/* Chain order, so the markup can stay in signal order */
+.chain-strip .node-scene { grid-area: scene; }
+.chain-strip .chain-link-in { grid-area: arrow-in; }
+.chain-strip .chain-box[data-half="camera"] { grid-area: camera; }
+.chain-strip .chain-link-signal { grid-area: signal; }
+.chain-strip .chain-box[data-half="display"] { grid-area: display; }
+.chain-strip .chain-link-out { grid-area: arrow-out; }
+.chain-strip .node-display-light { grid-area: light; }
+
+/* Camera and display; the name introduces the steps from the top
+   corner, where the arrow arrives */
+.chain-strip .chain-box {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    padding: var(--space-sm);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    transition: border-color var(--transition), background var(--transition);
+}
+
+/* The steps inside a box; they wrap among themselves */
+.chain-strip .chain-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-xs);
+}
+
+/* Box name, with anything qualifying it at the far end */
+.chain-strip .chain-box-name {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0 var(--space-md);
+    font-size: 0.8em;
+    color: var(--color-text-muted);
+}
+
+/* A step of the chain; node-light is the light at its two ends */
+.chain-strip .chain-node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--space-xs) var(--space-sm);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-subtle);
+    text-align: center;
+    line-height: 1.25;
+}
+
+/* Light, not a step: a pill on the page's own background, so the
+   border is what carries it and takes the text's own weight */
+.chain-strip .node-light {
+    border-radius: var(--radius-lg);
+    border-color: var(--color-text-muted);
+    background: var(--color-bg);
+}
+
+.chain-strip .node-open {
+    border-style: dashed;
+    border-color: var(--color-text-muted);
+}
+
+.chain-strip .chain-cite {
+    font-size: 0.8em;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+}
+
+/* Arrows. A signal name is one inline span, so its subscripts do
+   not become flex items */
+.chain-strip .chain-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-muted);
+    line-height: 1.2;
+}
+
+.chain-strip .chain-link::before {
+    content: "\2192";
+    font-size: 1.3em;
+}
+
+.chain-strip .chain-signal {
+    font-size: 0.8em;
+    white-space: nowrap;
+    text-align: center;
+}
+
+/* Second line of a signal name */
+.chain-strip .chain-signal-kind {
+    display: block;
+    font-size: 0.9em;
+}
+
+/* The chain's own arrows run down the axis, not across it */
+.chain-strip .chain-link-in::before,
+.chain-strip .chain-link-signal::before,
+.chain-strip .chain-link-out::before {
+    content: "\2193";
+}
+
+/* Their names hang beside them, out of flow: in flow a name would
+   push its arrow off the axis */
+.chain-strip .chain-link-signal,
+.chain-strip .chain-link-out {
+    position: relative;
+}
+
+.chain-strip .chain-link-signal .chain-signal,
+.chain-strip .chain-link-out .chain-signal {
+    position: absolute;
+    left: 100%;
+    margin-left: var(--space-xs);
+}
+
+/* The current view's box, lit in its button's green; the blocks
+   inside take the page background to stay cards on the tint */
+.chain-strip[data-view="cameraOetf"] .chain-box[data-half="camera"],
+.chain-strip[data-view="eotf"] .chain-box[data-half="display"] {
+    border-color: var(--color-primary);
+    background: var(--color-primary-soft);
+}
+
+.chain-strip[data-view="cameraOetf"] .chain-box[data-half="camera"] .chain-node,
+.chain-strip[data-view="eotf"] .chain-box[data-half="display"] .chain-node {
+    background: var(--color-bg);
+}
+
+.chain-strip[data-view="surroundGamma"] .node-ootf,
+.chain-strip[data-view="peakGamma"] .node-ootf {
+    border-color: var(--color-primary);
+    background: var(--color-primary-soft);
+}
+
+/* Wide enough for the chain in a line, the order the signal runs
+   in: the arrows turn with it, and the signal names hang under them
+   in the band the padding reserves. In flow those names cost 1024px
+   against the container's 960px; out of flow the row needs 884px */
+@media (min-width: 1000px) {
+    .chain-strip {
+        grid-template-areas: "scene arrow-in camera signal display arrow-out light";
+        align-items: center;
+        padding-bottom: 3.4em;
+    }
+
+    /* Full row height, so a name hangs below the row rather than
+       across the boxes the arrow runs between */
+    .chain-strip .chain-link {
+        align-self: stretch;
+        justify-content: center;
+    }
+
+    .chain-strip .chain-link-in::before,
+    .chain-strip .chain-link-signal::before,
+    .chain-strip .chain-link-out::before {
+        content: "\2192";
+    }
+
+    .chain-strip .chain-link-signal .chain-signal,
+    .chain-strip .chain-link-out .chain-signal {
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        margin-left: 0;
+        margin-top: var(--space-sm);
+    }
+}
+
+/* One size smaller on phones, as the rest of the page */
+@media (max-width: 600px) {
+    .chain-strip {
+        font-size: 0.8em;
+    }
+}
+
+/* COMPONENT: GRAPH VIEW BUTTONS
+   The row that chooses the view. Four buttons need to wrap on
+   narrow screens, and the two transfer functions keep their own
+   row above the two System Gamma views: a zero-height flex item
+   forces the wrap there */
+.graph-panel .toggle-switch {
+    flex-wrap: wrap;
+}
+
+.graph-panel .toggle-row-break {
+    flex-basis: 100%;
+    height: 0;
+}
+
+/* COMPONENT: GRAPH LEGEND
+   Names each view's curves and the conditions they are drawn for;
+   its mode pills are styled with the value pills above */
+.graph-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm) var(--space-lg);
+    justify-content: center;
+    color: var(--color-text-muted);
+    font-size: 0.95em;
+    margin-bottom: var(--space-sm);
+}
+
+.graph-legend .legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+/* On phones the legends keep only the identifying names; the
+   parenthetical details would wrap and orphan the swatches */
+@media (max-width: 600px) {
+    .graph-legend .legend-detail {
+        display: none;
+    }
+}
+
+/* The range mode's buttons in a view wrap as the view buttons do,
+   and sit closer to the legend under them than the calculator's
+   own toggle sits to its sliders */
+.graph-range-toggle {
+    flex-wrap: wrap;
+    margin-bottom: var(--space-md);
+}
+
+/* COMPONENT: DISPLAY SETTINGS, GRAPH VIEWS
+   The calculator's display sliders repeated in a view, between the
+   legend that reports the settings and the chart drawn for them, so a
+   curve can be moved while it is watched. Two columns where there is
+   room, one below. The sliders are the page's, at a thumb that does
+   not outweigh the chart under them. */
+.graph-display-settings {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    /* The row gap only comes into play in the stacked layout, where it
+       is what separates one setting from the next */
+    gap: var(--space-lg) var(--space-lg);
+    margin-bottom: var(--space-md);
+}
+
+.graph-display-settings .setting-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+/* The name takes the free space, so what follows it groups at the row's
+   right end: the reset and the value box, a gap apart */
+.graph-display-settings .setting-head label {
+    margin-right: auto;
+}
+
+/* The names take the panel's type, not the heading weight and size
+   the calculator's own slider labels carry: over a chart those read
+   as the chart's title */
+.graph-display-settings label {
+    font-size: 0.95em;
+    font-weight: 600;
+}
+
+.graph-display-settings input[type="number"] {
+    float: none;
+    margin-left: 0;
+    width: 5.5em;
+}
+
+/* Under the peak slider, the pair that says which peak it sets.
+   They qualify one control rather than choosing for the view, so they
+   take the smallest of the page's button sizes and sit at the slider's
+   own left edge. Shown only in Extended Range, with the toggle they
+   repeat */
+/* Beside a value box, on the row that box already occupies, so it
+   costs no line of its own. It does something rather than showing a
+   state, so it takes a quieter form than the mode buttons, and its
+   glyph carries it — the words are in the title and the label */
+.reset-button {
+    line-height: 1;
+    padding: 0.3em 0.45em;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-subtle);
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition: color var(--transition),
+                border-color var(--transition);
+}
+
+.reset-button:hover {
+    color: var(--color-text);
+    border-color: var(--color-primary);
+}
+
+/* The pair under the peak slider that says which peak it sets. Clear of
+   the slider's thumb, which stands proud of its track, but closer to it
+   than the grid's row gap holds the setting below, so they read as
+   belonging to the control above them */
+.peak-mode-buttons {
+    display: flex;
+    gap: 6px;
+    margin-top: var(--space-sm);
+}
+
+.peak-mode-buttons button {
+    font-size: 0.85em;
+    padding: 0.3em 0.6em;
+}
+
+.graph-display-settings input[type="range"] {
+    margin: var(--space-xs) 0 var(--space-sm);
+}
+
+.graph-display-settings input[type="range"]::-webkit-slider-thumb {
+    width: 26px;
+    height: 26px;
+    margin-top: -7px;
+}
+
+.graph-display-settings input[type="range"]::-moz-range-thumb {
+    width: 26px;
+    height: 26px;
+}
+
+/* A view with one setting gives it the whole width, as the probe
+   slider under the chart has */
+.graph-display-settings.settings-single {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 600px) {
+    .graph-display-settings {
+        grid-template-columns: 1fr;
+    }
+
+    /* A reset shares each head row, which leaves the name too
+       little width at the page's own label size: "(cd/m²)" drops to a
+       second line. The name and the box give up what it costs */
+    .graph-display-settings label {
+        font-size: 0.85em;
+    }
+
+    .graph-display-settings input[type="number"] {
+        width: 4.75em;
+    }
+}
+
+/* COMPONENT: EXPOSURE PRESETS
+   The line-ups the exposure can be set to, over its head row and
+   slider. The buttons carry two lines, so they take a plainer size
+   than the calculator's own presets. */
+.exposure-presets {
+    margin-bottom: var(--space-sm);
+}
+
+.exposure-presets button {
+    font-size: 1em;
+    padding: 0.35em 0.7em;
+    line-height: 1.3;
+}
+
+.exposure-presets .preset-level {
+    display: block;
+    font-size: 0.85em;
+    font-feature-settings: "tnum";
+}
+
+/* COMPONENT: GRAPH SOURCE QUOTE
+   The Recommendation's own words for the freedom a view's control
+   exercises, opening the view over the legend and the control */
+.graph-quote {
+    margin: 0 0 var(--space-sm);
+    text-align: center;
+    color: var(--color-text-muted);
+    font-size: 0.95em;
+    font-style: italic;
+}
+
+/* The attribution trails the quote rather than taking a line of its
+   own, which above a chart would read as the chart's caption */
+.graph-quote footer {
+    display: inline;
+    font-style: normal;
+    white-space: nowrap;
+}
+
+/* COMPONENT: GRAPH CHART
+   The SVG a view draws into. Its parts take generic names (axis,
+   grid, overlay), so their selectors are scoped to the panel.
+   Charts are rendered at the container's real pixel width (see
+   makeGraphResponsive in the script), so text and touch targets
+   keep their designed size on phones and desktops alike */
+.graph-canvas svg {
+    display: block;
+}
+
+.graph-panel .curve-adapted {
+    fill: none;
+    stroke: var(--color-secondary);
+    stroke-width: 2.5;
+    stroke-linejoin: round;
+}
+
+.graph-panel .curve-reference {
+    fill: none;
+    stroke: var(--color-reference-display);
+    stroke-width: 2;
+    stroke-dasharray: 6 5;
+}
+
+/* Context curves (System Gamma views): fixed nominal peaks, and
+   the Note 5f formulas drawn for comparison */
+.graph-panel .curve-family {
+    fill: none;
+    stroke: #aaa;
+    stroke-width: 1.5;
+}
+
+.graph-panel .curve-family-dashed {
+    fill: none;
+    stroke: #aaa;
+    stroke-width: 1.5;
+    stroke-dasharray: 5 4;
+}
+
+/* HLG Reference OETF view: the two segments that give Hybrid Log-Gamma
+   its name, coloured separately and direct-labelled */
+.graph-panel .curve-oetf-gamma {
+    fill: none;
+    stroke: var(--color-secondary);
+    stroke-width: 2.5;
+}
+
+.graph-panel .curve-oetf-log {
+    fill: none;
+    stroke: var(--color-oetf-log);
+    stroke-width: 2.5;
+}
+
+.graph-panel .curve-oetf-super {
+    fill: none;
+    stroke: var(--color-oetf-log);
+    stroke-width: 2;
+    stroke-dasharray: 6 5;
+}
+
+/* The comparison trace: muted and dashed, so the HLG curve stays
+   the subject where the two overlap */
+.graph-panel .curve-sdr {
+    fill: none;
+    stroke: #999;
+    stroke-width: 1.5;
+    stroke-dasharray: 4 4;
+}
+
+/* Signal bands behind the EOTF curve, in the colours and the terms of
+   EBU R 103 Figure 1 ("Typical signal levels for SDI"): green for the
+   nominal video range, yellow for the headroom either side of it, red
+   for the code values SDI keeps for its Time Reference Signal. */
+.graph-panel .zone-nominal {
+    fill: var(--r103-nominal);
+}
+
+.graph-panel .zone-headroom {
+    fill: var(--r103-headroom);
+}
+
+/* Four code values out of 1024, so this band is drawn about a pixel
+   tall: R 103's own pale pink would vanish at that height, so it is
+   deepened until a hairline reads */
+.graph-panel .zone-novideo {
+    fill: var(--r103-novideo);
+}
+
+/* Axes and grid. The grid darkens what it crosses rather than
+   painting a grey of its own: in the EOTF view it runs over the R 103
+   bands, and a light grey that reads on white disappears into the
+   green of the nominal video range */
+.graph-panel .grid line {
+    stroke: rgba(0, 0, 0, 0.14);
+}
+
+.graph-panel .axis text {
+    font-size: 14px;
+    fill: var(--color-text-muted);
+}
+
+.graph-panel .axis .domain,
+.graph-panel .axis line {
+    stroke: #bbb;
+}
+
+.graph-panel .axis-title {
+    font-size: 15px;
+    fill: var(--color-text-muted);
+}
+
+/* A quantity symbol inside a chart's own labels, which are SVG text
+   and so cannot carry the <var> the panel's HTML uses */
+.graph-panel .sym {
+    font-style: italic;
+}
+
+/* A dot's value is placed against the dot, so it lands wherever the
+   curve has taken it — over the grid, an R 103 band, the curve itself.
+   Its glyphs carry a halo of the page behind them, painted under the
+   fill so the letterforms keep their weight. The labels that name a
+   line sit along their own line and need none */
+.graph-panel .marker-label {
+    paint-order: stroke fill;
+    stroke: #fff;
+    stroke-width: 3.5px;
+    stroke-linejoin: round;
+}
+
+/* Labels and markers on the plot */
+.graph-panel .family-label {
+    font-size: 12px;
+    fill: var(--color-text-muted);
+}
+
+.graph-panel .segment-label {
+    font-size: 13px;
+    fill: var(--color-text-muted);
+}
+
+.graph-panel .segment-line {
+    stroke: #bbb;
+}
+
+/* Dashed markers for reference values (the 5 cd/m² reference
+   surround; the 400/2000 cd/m² production monitoring range) */
+.graph-panel .ref-line {
+    stroke: #bbb;
+    stroke-dasharray: 4 4;
+}
+
+/* The signal levels named across the EOTF plot: the 18 % grey card's
+   and HDR Reference White's. Neither is one of R 103's limits, so
+   both are dotted where those are dashed */
+.graph-panel .level-line {
+    stroke: #bbb;
+    stroke-dasharray: 1 3;
+}
+
+.graph-panel .ref-line-label {
+    font-size: 12px;
+    fill: var(--color-text-muted);
+    text-anchor: middle;
+}
+
+.graph-panel .pct-label {
+    font-size: 12px;
+    fill: var(--color-text-muted);
+}
+
+/* Names the signal bands inside the backdrop they label */
+.graph-panel .band-label {
+    font-size: 12px;
+    fill: var(--color-text-muted);
+}
+
+.graph-panel .marker-dot {
+    fill: var(--color-secondary);
+    stroke: #fff;
+    stroke-width: 2;
+}
+
+.graph-panel .marker-label {
+    font-size: 13px;
+    fill: var(--color-text-muted);
+    text-anchor: middle;
+}
+
+/* The EOTF view labels from the left of the dot: its curve climbs to
+   the right, and in Nominal Range mode it stands vertically above the
+   100% dot, through where a centred label would sit. A rule, not the
+   attribute, which the rule above would win against */
+.graph-panel .marker-label.label-left {
+    text-anchor: end;
+}
+
+/* The crosshair the probe moves. Darker than the reference lines it
+   crosses, which are all #bbb: it is the one of them the reader
+   drives, and at the probe's opening position it lies on one of them */
+.graph-panel .hover-line {
+    stroke: #888;
+    stroke-width: 1;
+}
+
+/* The probe's mark on a curve: a cross, where the levels the chart
+   states are dots. It is a cursor the reader moves rather than a value
+   the chart asserts, and its numbers are in the readout below */
+.graph-panel .hover-mark path {
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+}
+
+/* The centre takes the fixed markers' ring, so the two read as the
+   same kind of point */
+.graph-panel .hover-mark circle {
+    stroke: #fff;
+    stroke-width: 2;
+}
+
+.graph-panel .hover-mark.dot-adapted path {
+    stroke: var(--color-secondary);
+}
+
+/* The probe belongs to neither curve it reads off, so its centre
+   takes the page's own ink rather than a hue that would claim one */
+.graph-panel .hover-mark.dot-adapted circle {
+    fill: var(--color-text);
+}
+
+.graph-panel .hover-mark.dot-reference path {
+    stroke: var(--color-reference-display);
+}
+
+.graph-panel .hover-mark.dot-reference circle {
+    fill: var(--color-reference-display);
+}
+
+.graph-panel .overlay {
+    fill: none;
+    pointer-events: all;
+    /* A horizontal finger drag scrubs the crosshair; vertical
+       swipes still scroll the page */
+    touch-action: pan-y;
+}
+
+/* Narrow-layout adjustments, applied when a chart is built below
+   520 px: smaller annotation text, and the top annotation labels
+   dropped where they would collide */
+.graph-panel svg.narrow .axis text {
+    font-size: 12px;
+}
+
+.graph-panel svg.narrow .family-label {
+    font-size: 11px;
+}
+
+.graph-panel svg.narrow .segment-label {
+    font-size: 11px;
+}
+
+.graph-panel svg.narrow .axis-title {
+    font-size: 12px;
+}
+
+.graph-panel svg.narrow .pct-label {
+    font-size: 10px;
+}
+
+.graph-panel svg.narrow .band-label {
+    display: none;
+}
+
+/* Except the one turned along its band: it spends height, which a
+   narrow chart has, rather than width, which it has not */
+.graph-panel svg.narrow .band-label.keep-narrow {
+    display: inline;
+    font-size: 11px;
+}
+
+.graph-panel svg.narrow .ref-line-label {
+    display: none;
+}
+
+/* The HLG Reference OETF view's percentage markers fit on narrow
+   layouts; undo the rule above, which hides top annotation labels */
+.graph-panel svg.narrow .ref-line-label.keep-narrow {
+    display: inline;
+    font-size: 11px;
+}
+
+/* COMPONENT: GRAPH SYSTEM GAMMA
+   The system gamma the view's display settings produce (BT.2100-3
+   Note 5f, BT.2390-12 section 6.2), under the chart it shapes. The
+   legend's conditions are dropped on phones, where this is the only
+   place γ reads; it is the settings' one derived value, so it takes
+   the anchors' role pill rather than a line of the table's own */
+.graph-gamma {
+    text-align: center;
+    color: var(--color-text-muted);
+    font-size: 0.95em;
+    font-feature-settings: "tnum";
+    line-height: 2;
+    min-height: 1lh;
+}
+
+.graph-gamma .role-pill {
+    margin-left: 0.35em;
+    font-size: 0.85em;
+}
+
+/* COMPONENT: GRAPH ANCHOR LINE
+   A view's fixed anchors listed under its chart: the 18 % grey card
+   and the signal levels 75%, 100% and 109%, each with the value the
+   view's control moves — a luminance under the EOTF, a signal level
+   or a scene light under the OETF. The chart marks each of them but
+   has no room for the names, and the probe reaches only one at a
+   time; this line carries them at once. Styled as the readout, one
+   line above it, and built from the same .readout-item parts (but no
+   swatch — see the anchor colours below) */
+.graph-anchors {
+    text-align: center;
+    color: var(--color-text-muted);
+    font-size: 0.95em;
+    font-feature-settings: "tnum";
+    /* A pill's padding fills the body line height, so two rows of
+       anchors touch at the pills unless the lines are taller */
+    line-height: 2;
+    margin-bottom: var(--space-xs);
+    /* Reserving the worst case keeps the chart and the controls still
+       while the anchors change — the 109% anchor comes and goes with
+       the range mode, and the pills and the values change width. Four
+       anchors carrying five-figure luminances take two lines at every
+       width the container reaches */
+    min-height: 2lh;
+}
+
+/* The markup runs level, value, pill so the phone layout below can
+   stack the pill under the pair with no extra wrapper; here it is
+   ordered back between them, in the results table's order. Anchors
+   need more air between them than the pill leaves inside them, or a
+   pill's own gaps read as an item boundary and the level, its role
+   and its value stop grouping */
+.graph-anchors .readout-item {
+    display: inline-flex;
+    align-items: baseline;
+    margin: 0 0.7em;
+}
+
+/* The role pills read as part of each anchor here rather than as a
+   column of their own, so they sit tighter than the table's. The
+   gaps sit on the level and on the pill rather than around the
+   pill, so level, role and value stay evenly spaced at both of
+   the pill widths below */
+.graph-anchors .anchor-level {
+    margin-right: 0.35em;
+}
+
+.graph-anchors .role-pill {
+    order: 2;
+    margin: 0 0.35em 0 0;
+    font-size: 0.85em;
+}
+
+.graph-anchors .anchor-value {
+    order: 3;
+}
+
+/* Below 600px each pill takes a line under its anchor rather than
+   sitting inside it. An inline pill's side padding is the largest
+   fixed cost on the line — three of them spend more width than the
+   words do — so moving it off the line is what lets the full
+   "Calculated" and "Input" fit on a phone at all. The anchor becomes
+   a flex box: the value is ordered ahead of the pill, which then
+   takes the full width and wraps onto its own line */
+@media (max-width: 600px) {
+    /* With the pill on a line of its own the tall lines above would
+       double up, so the anchors are spaced by a margin instead */
+    .graph-anchors {
+        line-height: var(--line-height);
+    }
+
+    .graph-anchors .readout-item {
+        display: inline-block;
+        text-align: center;
+        margin-bottom: 0.4em;
+    }
+
+    /* Block layout follows the markup, so the pill drops under the
+       level and value on its own. width: fit-content keeps it to its
+       text — stretched to the anchor's width it would read as a bar
+       rather than a pill */
+    .graph-anchors .role-pill {
+        display: block;
+        width: fit-content;
+        margin: 0.1em auto 0;
+        font-size: 0.8em;
+    }
+
+    /* Two lines per anchor, and two anchors to a row: the grey card
+       and Reference White fill the first, the peak and — in Extended
+       Range — the extended peak the second. Reserving both rows keeps
+       the chart and the controls still as the values change */
+    .graph-anchors {
+        min-height: 4lh;
+    }
+}
+
+/* Anchors that change width as their control moves — the white
+   card's name and every number under the OETF's exposure — are
+   held in a two-by-two grid rather than wrapped as a line: the
+   cards on one row, the coding levels on the other, each centred
+   in its own cell so a change of width moves only its own edges,
+   not the row it is on */
+.graph-anchors.anchors-paired {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-items: center;
+}
+
+@media (max-width: 600px) {
+    .graph-anchors.anchors-paired {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/* Each anchor takes the results table's colour role, so a level
+   reads the same in both places: green where the peak slider sets
+   it, blue where it is calculated from the other one. The pair
+   swaps with the peak mode (see applyPeakModePresentation), which
+   is what makes the swap visible on the curve as well as the table */
+.anchor-input {
+    color: var(--color-primary);
+}
+
+.anchor-calculated {
+    color: var(--color-secondary);
+}
+
+/* COMPONENT: GRAPH READOUT
+   HTML readout line fed by the chart crosshair: real text instead
+   of an SVG tooltip box, so it stays legible on phones and wraps
+   on narrow screens */
+.graph-readout {
+    /* Between the chart and the probe controls. Reserving the
+       readout's worst-case height (see the width queries below)
+       keeps the controls still while the values change — including
+       when the signal's clip note appears */
+    min-height: 1lh;
+    text-align: center;
+    color: var(--color-text-muted);
+    font-size: 0.95em;
+    font-feature-settings: "tnum";
+    margin-bottom: var(--space-xs);
+}
+
+/* The OETF readout carries no per-curve values, so it has no lines to
+   stack: scene light, signal and code value read as one line. It
+   reserves only the wrap its longest values can force on the
+   narrowest screens, not the three lines the curve views need */
+.graph-readout.readout-unstacked {
+    min-height: 1lh;
+}
+
+@media (max-width: 800px) {
+    .graph-readout {
+        min-height: 2lh;
+    }
+}
+
+@media (max-width: 600px) {
+    .graph-readout {
+        /* Three lines: the probe's signal level and code value,
+           then a line for each curve's value (see below) */
+        min-height: 3lh;
+    }
+
+    /* Each curve's value takes a line of its own, so the readout
+       keeps the same three lines whatever the values are, rather
+       than re-wrapping as they grow and shrink under the probe */
+    .graph-readout .readout-item:has(.readout-swatch) {
+        display: block;
+    }
+
+    .graph-readout.readout-unstacked {
+        min-height: 2lh;
+    }
+}
+
+/* Each value in the readout wraps as a unit (a swatch never ends
+   a line with its text on the next) */
+.readout-item {
+    white-space: nowrap;
+    margin: 0 var(--space-xs);
+}
+
+.readout-swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: var(--radius-full);
+    vertical-align: middle;
+    margin-right: 0.35em;
+}
+
+.readout-swatch.swatch-adapted {
+    background: var(--color-secondary);
+}
+
+.readout-swatch.swatch-reference {
+    background: var(--color-reference-display);
+}
+
+/* COMPONENT: GRAPH PROBE CONTROLS
+   The level box and slider under a graph, which move the crosshair.
+   A column flexbox, not the float the calculator's sliders use: with
+   no label above the value box, clearance would swallow the slider's
+   top margin. */
+.graph-panel .probe-row {
+    display: flex;
+    flex-direction: column;
+}
+
+/* The reset and the value box share the line above the slider,
+   at its right end, as they share a head row in the display settings */
+.graph-panel .probe-head {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-sm);
+}
+
+.graph-panel .probe-row input[type="number"] {
+    float: none;
+    margin-left: 0;
+}
+
+/* COMPONENT: FORMULA TABLE
+   Tables in the documentation section */
+.formula-table {
+    table-layout: auto;
+    text-align: left;
+}
+
+.formula-table th,
+.formula-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.formula-table-header-label {
+    text-align: right;
+}
+
+.formula-label {
+    width: 8ch;
+    text-align: right;
+}
+
+.formula-value,
+.formula-description {
+    text-align: left;
+}
+
+/* RESPONSIVE DESIGN
+   Adjustments for different screen sizes */
+@media (max-width: 800px) {
+    .container {
+        padding: var(--space-md);
+    }
+
+    .preset-buttons button {
+        font-size: 100%;
+        padding: 0.4em 0.6em;
+    }
+
+    .output-table th,
+    .output-table td {
+        padding: 8px;
+    }
+
+    .live-formulas .formula-container {
+        font-size: var(--font-size-sm);
+    }
+}
+
+/* On phones the presets step down once more, so a row holds more of
+   them */
+@media (max-width: 600px) {
+    .preset-buttons {
+        gap: 6px;
+    }
+
+    .preset-buttons button {
+        font-size: 90%;
+        padding: 0.4em 0.5em;
+    }
+
+    /* The exposure's line-ups are named rather than numbered, and
+       the three names hold a row only at a smaller step and without
+       their issuer */
+    .exposure-presets {
+        gap: 3px;
+    }
+
+    .exposure-presets button {
+        font-size: 0.8em;
+        padding: 0.35em 0.3em;
+    }
+
+    .exposure-presets .preset-issuer {
+        display: none;
+    }
+}
+
+/* Touch device optimizations */
+@media (hover: none) {
+
+    input[type="range"]::-webkit-slider-thumb {
+        width: 30px;
+        height: 30px;
+        margin-top: -9px;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+        width: 30px;
+        height: 30px;
+    }
+
+    input[type="number"] {
+        width: 5em;
+        padding: var(--space-xs);
+    }
+}
