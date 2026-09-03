@@ -17,8 +17,8 @@ limitations under the License.
 ---
 HLG Display Adaptation Calculator
 
-Version: 1.6
-Last modified: 2026-09-02
+Version: 1.6.1
+Last modified: 2026-09-03
 Author: Thomas Berglund, with assistance from Claude, by Anthropic.
 
 This HLG Display Adaptation Calculator implements the Hybrid Log-Gamma (HLG) system as specified in
@@ -156,8 +156,7 @@ def hlg_reference_oetf(E):
         float: Non-linear HLG signal value E' in the range [0:1]
 
     Where diffuse white and an 18% grey card land on this curve is set by the
-    camera exposure ahead of the OETF (BT.2100-3 Note 5b), not by the OETF;
-    see analysis/hlg_oetf_normalization_and_exposure.md.
+    camera exposure ahead of the OETF (BT.2100-3 Note 5b), not by the OETF.
         
     Reference: ITU-R BT.2100-3, Table 5, HLG Reference OETF
     """

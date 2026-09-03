@@ -145,8 +145,7 @@ def hlg_reference_oetf(E):
         float: Non-linear HLG signal value E' in the range [0:1]
 
     Where diffuse white and an 18% grey card land on this curve is set by the
-    camera exposure ahead of the OETF (BT.2100-3 Note 5b), not by the OETF;
-    see analysis/hlg_oetf_normalization_and_exposure.md.
+    camera exposure ahead of the OETF (BT.2100-3 Note 5b), not by the OETF.
         
     Reference: ITU-R BT.2100-3, Table 5, HLG Reference OETF
     """
@@ -157,7 +156,7 @@ def hlg_reference_oetf(E):
         return HLG_a * math.log(12 * E - HLG_b) + HLG_c
 ```
 
-The OETF is the camera encoding function that converts scene linear light to non-linear HLG signal values. It uses a piecewise function with a square-root curve for dark regions (E ≤ 1/12) and a logarithmic curve for bright regions (E > 1/12). The constants HLG_a, HLG_b, and HLG_c are precisely defined in the ITU-R BT.2100-3 standard. Where diffuse white and an 18% grey card land on the curve is an exposure decision made ahead of the OETF (BT.2100-3 Note 5b); see `analysis/hlg_oetf_normalization_and_exposure.md`.
+The OETF is the camera encoding function that converts scene linear light to non-linear HLG signal values. It uses a piecewise function with a square-root curve for dark regions (E ≤ 1/12) and a logarithmic curve for bright regions (E > 1/12). The constants HLG_a, HLG_b, and HLG_c are precisely defined in the ITU-R BT.2100-3 standard. Where diffuse white and an 18% grey card land on the curve is an exposure decision made ahead of the OETF (BT.2100-3 Note 5b).
 
 ### HLG Inverse OETF
 
@@ -889,7 +888,7 @@ This function inverts the extended range calculation: instead of taking the nomi
 
 An iterative solver is required because system gamma depends on the nominal peak luminance (*ITU-R BT.2100-3 Note 5f*), the EOTF output at the 109% signal level depends on that gamma, and the 109% luminance is the product of the nominal peak and the EOTF output — so the relationship cannot be inverted in closed form.
 
-Bisection is used rather than fixed-point iteration because Note 5f's switch between its two gamma formulas makes $\gamma(L_W)$ discontinuous at 400 and 2000 cd/m² (the two formulas are "virtually identical" only within the 400–2000 cd/m² monitoring range, per *ITU-R BT.2390-12 Section 6.2*). The discontinuities create a small window of Extended Peak Luminance values (≈3855–3869 cd/m² at reference surround and zero black level) with no exact solution and another (≈667–671 cd/m²) with two. Bisection relies only on the 109% luminance increasing with $L_W$ within each formula branch and converges to the largest fitting $L_W$; a second pass from the $L_W$ = 400 boundary covers the two-solution window, preferring the larger solution so that a nominal peak configuration round-trips through this mode. See `analysis/slider_meaning_design_options.md` for the full analysis of the discontinuity windows.
+Bisection is used rather than fixed-point iteration because Note 5f's switch between its two gamma formulas makes $\gamma(L_W)$ discontinuous at 400 and 2000 cd/m² (the two formulas are "virtually identical" only within the 400–2000 cd/m² monitoring range, per *ITU-R BT.2390-12 Section 6.2*). The discontinuities create a small window of Extended Peak Luminance values (≈3855–3869 cd/m² at reference surround and zero black level) with no exact solution and another (≈667–671 cd/m²) with two. Bisection relies only on the 109% luminance increasing with $L_W$ within each formula branch and converges to the largest fitting $L_W$; a second pass from the $L_W$ = 400 boundary covers the two-solution window, preferring the larger solution so that a nominal peak configuration round-trips through this mode.
 
 ## References
 

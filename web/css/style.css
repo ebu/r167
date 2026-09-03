@@ -1291,13 +1291,6 @@ p .formula-container {
 }
 
 .graph-panel svg.narrow .band-label {
-    display: none;
-}
-
-/* Except the one turned along its band: it spends height, which a
-   narrow chart has, rather than width, which it has not */
-.graph-panel svg.narrow .band-label.keep-narrow {
-    display: inline;
     font-size: 11px;
 }
 
@@ -1313,11 +1306,7 @@ p .formula-container {
 }
 
 /* COMPONENT: GRAPH SYSTEM GAMMA
-   The system gamma the view's display settings produce (BT.2100-3
-   Note 5f, BT.2390-12 section 6.2), under the chart it shapes. The
-   legend's conditions are dropped on phones, where this is the only
-   place γ reads; it is the settings' one derived value, so it takes
-   the anchors' role pill rather than a line of the table's own */
+   The System Gamma line under the EOTF chart */
 .graph-gamma {
     text-align: center;
     color: var(--color-text-muted);
@@ -1352,9 +1341,9 @@ p .formula-container {
     margin-bottom: var(--space-xs);
     /* Reserving the worst case keeps the chart and the controls still
        while the anchors change — the 109% anchor comes and goes with
-       the range mode, and the pills and the values change width. Four
-       anchors carrying five-figure luminances take two lines at every
-       width the container reaches */
+       the range mode, and the pills and the values change width. The
+       paired grid below takes two rows whenever there are more than
+       two anchors */
     min-height: 2lh;
 }
 
@@ -1429,34 +1418,60 @@ p .formula-container {
     }
 }
 
-/* Anchors that change width as their control moves — the white
-   card's name and every number under the OETF's exposure — are
-   held in a two-by-two grid rather than wrapped as a line: the
-   cards on one row, the coding levels on the other, each centred
-   in its own cell so a change of width moves only its own edges,
-   not the row it is on */
+/* The anchors are held in a two-by-two grid rather than wrapped as
+   a line, the pairs the chart draws together sharing a row: under
+   the OETF the cards on one row and the coding levels on the other;
+   under the EOTF the two levels the standards fix, then the nominal
+   and extended peaks, which swap roles with the peak mode and read
+   as the pair they are only side by side. Each anchor is centred in
+   its own cell, so one that changes width as its control moves —
+   the white card's name and every number under the OETF's exposure
+   — moves only its own edges, not the row it is on */
 .graph-anchors.anchors-paired {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     justify-items: center;
 }
 
+/* In Nominal Range the EOTF has no extended peak, and the nominal
+   peak takes the whole of its row rather than the left cell */
+.graph-anchors.anchors-paired .readout-item:nth-child(3):last-child {
+    grid-column: 1 / -1;
+}
+
+/* The EOTF's anchors are short — a level, a pill and a luminance —
+   and centred in half-width cells they drift apart, with a hole
+   between the pairs. Its columns are packed to their content and
+   drawn to the centre instead, the gap between them fixed */
+@media (min-width: 601px) {
+    .graph-anchors.anchors-paired.anchors-packed {
+        grid-template-columns: repeat(2, max-content);
+        justify-content: center;
+        column-gap: 1.5em;
+    }
+}
+
+/* The OETF's anchors are too wide for a phone to pair — a card's
+   name with its scene light, a level with its own — so they stack
+   in one column there. The EOTF's stay paired: a level and a
+   luminance take half a phone's width */
 @media (max-width: 600px) {
-    .graph-anchors.anchors-paired {
+    .graph-anchors.anchors-paired.anchors-stack-narrow {
         grid-template-columns: minmax(0, 1fr);
     }
 }
 
-/* Each anchor takes the results table's colour role, so a level
-   reads the same in both places: green where the peak slider sets
-   it, blue where it is calculated from the other one. The pair
-   swaps with the peak mode (see applyPeakModePresentation), which
-   is what makes the swap visible on the curve as well as the table */
-.anchor-input {
+/* Each value under a chart — the anchors and the System Gamma line —
+   takes the results table's colour role, so a level reads the same
+   in both places: green where the peak slider sets it, blue where it
+   is calculated from the other one. The pair swaps with the peak
+   mode (see applyPeakModePresentation), which is what makes the swap
+   visible on the curve as well as the table */
+.readout-input {
     color: var(--color-primary);
 }
 
-.anchor-calculated {
+.readout-calculated {
     color: var(--color-secondary);
 }
 

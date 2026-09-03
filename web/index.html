@@ -20,8 +20,8 @@ limitations under the License.
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Interactive calculator for HLG display adaptation">
     <meta name="author" content="Thomas Berglund, with assistance from Claude, by Anthropic">
-    <meta name="version" content="1.6">
-    <meta name="last-modified" content="2026-09-02">
+    <meta name="version" content="1.6.1">
+    <meta name="last-modified" content="2026-09-03">
     <title>HLG Display Adaptation Calculator</title>
     <!-- KaTeX 0.16.9 (formulas) and D3 7.9.0 (graphs) -->
     <link rel="stylesheet" href="lib/katex/katex.min.css">
@@ -290,7 +290,7 @@ limitations under the License.
                         <span class="legend-item"><svg width="28" height="12" aria-hidden="true"><line x1="1" y1="6" x2="27" y2="6" class="curve-sdr"></line></svg><span>SDR camera, same exposure<span class="legend-detail" id="cameraOetfSdrDetail"> (ITU-R BT.709-6 OETF; white card at 93.3 %, clips at 1.15&times; white)</span></span></span>
                     </div>
                     <div id="cameraOetfGraph" class="graph-canvas"></div>
-                    <div id="cameraOetfAnchors" class="graph-anchors anchors-paired"></div>
+                    <div id="cameraOetfAnchors" class="graph-anchors anchors-paired anchors-stack-narrow"></div>
                     <div id="cameraOetfReadout" class="graph-readout readout-unstacked"></div>
                     <div class="probe-row">
                         <div class="probe-head">
@@ -360,7 +360,7 @@ limitations under the License.
                     </div>
                     <div id="eotfGraph" class="graph-canvas"></div>
                     <div id="eotfGamma" class="graph-gamma"></div>
-                    <div id="eotfAnchors" class="graph-anchors"></div>
+                    <div id="eotfAnchors" class="graph-anchors anchors-paired anchors-packed"></div>
                     <div id="eotfReadout" class="graph-readout"></div>
                     <div class="probe-row">
                         <div class="probe-head">

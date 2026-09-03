@@ -82,9 +82,10 @@ function drawLabel(text, string) {
 
 /**
  * Rebuild a graph controller's chart at its container's actual pixel
- * width whenever that width changes — including the first time the
- * container becomes visible (hidden views measure 0 and are skipped
- * until shown). Charts are drawn in real pixels rather than scaled
+ * width whenever that width changes — including each time the
+ * container becomes visible: a hidden view measures 0 and is skipped,
+ * and its text measures as nothing, so anything drawn while hidden is
+ * rebuilt on showing. Charts are drawn in real pixels rather than scaled
  * from a fixed-size drawing, so text and touch targets keep their
  * designed size on phones and desktops alike.
  *
@@ -94,9 +95,11 @@ function drawLabel(text, string) {
 function makeGraphResponsive(controller) {
     const rebuild = () => {
         const width = controller.container.clientWidth;
-        if (width < 10 || Math.abs(width - controller.builtWidth) < 2) {
+        if (width < 10) {
+            controller.builtWidth = 0;
             return;
         }
+        if (Math.abs(width - controller.builtWidth) < 2) return;
         controller.builtWidth = width;
         controller.applyLayout(width);
         controller.container.innerHTML = "";
@@ -176,7 +179,7 @@ function wireGraphProbeControls(slider, input, setValue, sliderToValue = v => v)
  * leaves that mapping free, so the scene axis is a choice of
  * exposure, set above the chart as the other views set their
  * conditions. The same grey card reads 38%, 21.2% or 67.2%
- * depending on the mapping (analysis/hlg_oetf_normalization_and_exposure.md).
+ * depending on the mapping.
  *
  * No calculator setting reaches the curve; the exposure does, so
  * setExposure rebuilds it. The probe converts scene light to
@@ -442,8 +445,7 @@ class CameraOetfGraphController {
      * in Figure 19, the "factor of 3" — follow from idealizing
      * this camera as a pure square root, which puts its clip at a
      * third of the 100% HLG scene light; the BT.709 curve clips
-     * earlier (analysis/hlg_oetf_normalization_and_exposure.md,
-     * section 10).
+     * earlier.
      */
     sdrOetf(L) {
         return L < 0.018 ? 4.5 * L : 1.099 * Math.pow(L, 0.45) - 0.099;
@@ -786,7 +788,7 @@ class CameraOetfGraphController {
         const ROLE_LABELS = { input: "Input", calculated: "Calculated" };
         this.anchorLine.innerHTML =
             anchors.map(([name, value, role]) =>
-                `<span class="readout-item anchor-${role}">` +
+                `<span class="readout-item readout-${role}">` +
                 `<span class="anchor-level">${name}</span>` +
                 `<span class="anchor-value">${value}</span>` +
                 `<span class="role-pill role-${role}">${ROLE_LABELS[role]}</span>` +
@@ -1148,7 +1150,7 @@ class EotfGraphController {
         // In extended-peak mode γ follows the solved nominal peak, not
         // the peak the slider above sets
         this.gammaLine.innerHTML =
-            `<span class="readout-item">System Gamma <var>γ</var> = ${data.gamma.toFixed(3)}` +
+            `<span class="readout-item readout-calculated">System Gamma <var>γ</var> = ${data.gamma.toFixed(3)}` +
             `<span class="role-pill role-calculated">Calculated</span></span>`;
 
         // The signal axis carries the whole 10-bit code range, so
@@ -1157,19 +1159,12 @@ class EotfGraphController {
         // 64 and 100% is CV 940, so E' = (CV - 64) / 876)
         const atCode = cv => (cv - 64) / 876 * 100;
         this.y.domain([atCode(0), atCode(1023)]);
-        // Narrow layouts drop ticks whose labels would collide
-        const signalTicks = this.narrow ? [0, 50, 75, 109] : [-5, 0, 25, 50, 75, 100, 109];
         this.yAxisGroup.call(d3.axisLeft(this.y)
-            .tickValues(signalTicks)
-            .tickFormat(d => d)
+            .tickValues([atCode(4), 0, 25, 50, 75, 100, 109])
+            .tickFormat(d => d === atCode(4) ? "-6.84" : d)
             .tickSizeOuter(0));
 
-        // The same levels as code values on the right, at R 103
-        // Figure 1's own boundaries (984 is omitted: its label would
-        // collide with 940 and 1019; the 105% level is the dashed
-        // line across the plot)
-        const codeTicks = (this.narrow ? [64, 721, 1019] : [4, 64, 721, 940, 1019])
-            .map(atCode);
+        const codeTicks = [4, 64, 721, 940, 1019].map(atCode);
         this.codeAxisGroup.call(d3.axisRight(this.y)
             .tickValues(codeTicks)
             .tickFormat(pct => Math.round(64 + 876 * pct / 100))
@@ -1230,7 +1225,7 @@ class EotfGraphController {
         // headroom tags above and below name bands too thin to hold
         // anything but a corner
         this.bandOverlayGroup.append("text")
-            .attr("class", "band-label keep-narrow")
+            .attr("class", "band-label")
             .attr("transform", `translate(${bandX + bandW - 8}, ${(this.y(0) + this.y(100)) / 2}) rotate(-90)`)
             .attr("text-anchor", "middle")
             .text("Nominal video range");
@@ -1241,20 +1236,21 @@ class EotfGraphController {
         // luminance each reaches, not the level. The labels sit on the
         // left, the side of the plot the curve has left by these
         // levels.
-        [
+        const levelLabels = [
             [this.WHITE_LEVEL, "HDR Reference White", "HDR Ref White"],
             [this.GREY_LEVEL, "18 % grey card"]
-        ].forEach(([level, name, shortName = name]) => {
+        ].map(([level, name, shortName = name]) => {
             this.bandOverlayGroup.append("line")
                 .attr("class", "level-line")
                 .attr("x1", bandX).attr("x2", bandX + bandW)
                 .attr("y1", this.y(level)).attr("y2", this.y(level));
-            this.bandOverlayGroup.append("text")
+            const text = this.bandOverlayGroup.append("text")
                 .attr("class", "pct-label")
                 .attr("x", bandX + 6).attr("y", this.y(level) - 5)
                 .text(this.narrow
                     ? shortName
                     : `${name}, ${level.toFixed(level < 50 ? 1 : 0)} % (ITU-R BT.2408-9)`);
+            return { level, text, shortName };
         });
 
         // Each curve starts exactly where it crosses the log floor,
@@ -1304,6 +1300,7 @@ class EotfGraphController {
         }
 
         this.markerGroup.selectAll("*").remove();
+        const markerLabels = [];
         markers.forEach(marker => {
             const luminance = this.adaptedLuminanceAt(marker.signal);
             if (luminance < this.L_MIN) return;
@@ -1323,10 +1320,20 @@ class EotfGraphController {
             // the 100% one on every layout: the nine signal points
             // between the dots are 11 px on the narrow plot, more
             // than the label's height, and the top margin holds it.
-            group.append("text").attr("class", "marker-label label-left")
+            const text = group.append("text").attr("class", "marker-label label-left")
                 .attr("x", -9)
                 .attr("y", -8)
                 .text(`${this.formatLuminance(luminance)} cd/m²`);
+            markerLabels.push({ level: marker.signal * 100, cx, text });
+        });
+
+        // Use short name to avoid overlapping with luminance label
+        levelLabels.forEach(({ level, text, shortName }) => {
+            const marker = markerLabels.find(m => Math.abs(m.level - level) < 1e-9);
+            if (!marker) return;
+            const nameEnd = bandX + 6 + text.node().getComputedTextLength();
+            const labelStart = marker.cx - 9 - marker.text.node().getComputedTextLength();
+            if (nameEnd + 8 > labelStart) text.text(shortName);
         });
 
         // The same anchors listed under the chart with their
@@ -1346,7 +1353,7 @@ class EotfGraphController {
         const anchors = markers;
         this.anchorLine.innerHTML =
             anchors.map(anchor =>
-                `<span class="readout-item anchor-${anchor.role}">` +
+                `<span class="readout-item readout-${anchor.role}">` +
                 `<span class="anchor-level">${anchor.label}</span>` +
                 `<span class="anchor-value">${this.formatLuminance(this.adaptedLuminanceAt(anchor.signal))} cd/m²</span>` +
                 `<span class="role-pill role-${anchor.role}">${ROLE_LABELS[anchor.role]}</span>` +
