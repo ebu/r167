@@ -20,8 +20,8 @@ limitations under the License.
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Interactive calculator for HLG display adaptation">
     <meta name="author" content="Thomas Berglund, with assistance from Claude, by Anthropic">
-    <meta name="version" content="1.6.1">
-    <meta name="last-modified" content="2026-09-03">
+    <meta name="version" content="1.6.2">
+    <meta name="last-modified" content="2026-09-28">
     <title>HLG Display Adaptation Calculator</title>
     <!-- KaTeX 0.16.9 (formulas) and D3 7.9.0 (graphs) -->
     <link rel="stylesheet" href="lib/katex/katex.min.css">
@@ -227,7 +227,7 @@ limitations under the License.
                     </span>
                     <span class="chain-link chain-link-signal"><span class="chain-signal"><var>E&prime;</var> = {<var>R&prime;</var>, <var>G&prime;</var>, <var>B&prime;</var>}<span class="chain-signal-kind">non-linear signal</span></span></span>
                     <span class="chain-box" data-half="display">
-                        <span class="chain-box-name">Display<span class="chain-box-note">EOTF = OETF<sup>&minus;1</sup> &compfn; OOTF &mdash; Annex 1</span></span>
+                        <span class="chain-box-name">Display<span class="chain-box-note">EOTF = OETF<sup>&minus;1</sup> &otimes; OOTF &mdash; Annex 1</span></span>
                         <span class="chain-row">
                             <span class="chain-node">Inverse OETF<span class="chain-cite">Table 5</span></span>
                             <span class="chain-link"></span>

@@ -99,7 +99,8 @@ class HLGCalculator {
      * Per ITU-R BT.2100-3 Table 5, "Hybrid Log-Gamma (HLG) System"
      */
      hlgInverseOetf(E_prime) {
-        // Ensure signal is non-negative per BT.2100-3 Table 5
+        // BT.2100-3 Table 5 defines OETF⁻¹[x] for 0 ≤ x ≤ 1 only; a negative E'
+        // is clamped to 0, as x²/3 would otherwise return positive light for it
         E_prime = Math.max(0.0, E_prime);
         
         // Apply the piecewise inverse OETF
@@ -170,7 +171,7 @@ class HLGCalculator {
      * with different black level capabilities.
      * 
      * Per ITU-R BT.2100-3 Table 5, black level lift is defined as:
-     *     β = √3(LB/LW)^(1/γ)
+     *     β = √(3(L_B/Lw)^(1/γ))
      * 
      * Where:
      * - LB is the display luminance for black in cd/m²
@@ -218,10 +219,10 @@ class HLGCalculator {
             g_lifted = Math.max(0, (1 - beta) * g_prime + beta);
             b_lifted = Math.max(0, (1 - beta) * b_prime + beta);
         } else {
-            // No black level lift
-            r_lifted = r_prime;
-            g_lifted = g_prime;
-            b_lifted = b_prime;
+            // No black level lift (β = 0): F_D = EOTF[max(0,E')]
+            r_lifted = Math.max(0, r_prime);
+            g_lifted = Math.max(0, g_prime);
+            b_lifted = Math.max(0, b_prime);
         }
 
         // Step 2: Inverse OETF - Convert to scene linear

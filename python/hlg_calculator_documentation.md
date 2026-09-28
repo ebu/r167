@@ -183,7 +183,8 @@ def hlg_inverse_oetf(E_prime, explain_label=None):
     Reference: ITU-R BT.2100-3, Table 5, Hybrid Log-Gamma (HLG) system,
                "inverse OETF" component of the "Reference HLG EOTF" definition.
     """
-    # Ensure signal is non-negative per BT.2100-3 Table 5
+    # BT.2100-3 Table 5 defines OETF⁻¹[x] for 0 ≤ x ≤ 1 only; a negative E'
+    # is clamped to 0, as x²/3 would otherwise return positive light for it
     E_prime = max(0.0, E_prime)
     
     # Apply the piecewise inverse OETF
@@ -488,10 +489,10 @@ def hlg_reference_eotf(r_prime, g_prime, b_prime, gamma, Lw, L_B=0.0, beta=None,
         g_lifted = max(0, (1 - beta) * g_prime + beta)
         b_lifted = max(0, (1 - beta) * b_prime + beta)
     else:
-        # No black level lift
-        r_lifted = r_prime
-        g_lifted = g_prime
-        b_lifted = b_prime
+        # No black level lift (β = 0): F_D = EOTF[max(0,E')]
+        r_lifted = max(0, r_prime)
+        g_lifted = max(0, g_prime)
+        b_lifted = max(0, b_prime)
     
     # Step 2: Convert non-linear signal to scene linear light using inverse OETF
     # Only pass the explain_label for achromatic signals to avoid redundant explanations
